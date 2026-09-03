@@ -33,7 +33,7 @@ interface GoogleSignInButtonProps {
 }
 
 export function GoogleSignInButton({
-  label = "Продолжить с Google",
+  label = "Continue with Google",
   onError,
 }: GoogleSignInButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
@@ -59,7 +59,7 @@ export function GoogleSignInButton({
       {isLoading ? (
         <>
           <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-          Перенаправляем в Google...
+          Redirecting to Google...
         </>
       ) : (
         <>
@@ -78,7 +78,7 @@ export function AuthDivider() {
         <div className="w-full border-t border-slate-800" />
       </div>
       <div className="relative flex justify-center text-xs uppercase">
-        <span className="bg-slate-900/80 px-3 text-slate-500">или</span>
+        <span className="bg-slate-900/80 px-3 text-slate-500">or</span>
       </div>
     </div>
   );

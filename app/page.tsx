@@ -213,7 +213,7 @@ const [isUploading, setIsUploading] = useState(false);
     (typeof user?.user_metadata?.full_name === "string" && user.user_metadata.full_name) ||
     (typeof user?.user_metadata?.name === "string" && user.user_metadata.name) ||
     user?.email ||
-    "Аккаунт";
+    "Account";
 
   const fetchHistory = async () => {
     if (!isSupabaseConfigured) {
@@ -300,7 +300,7 @@ const [isUploading, setIsUploading] = useState(false);
     pack: (typeof CREDIT_PACKS)[number] = DEFAULT_CREDIT_PACK
   ) => {
     if (!user) {
-      alert("Войдите в аккаунт, чтобы купить кредиты.");
+      alert("Sign in to buy credits.");
       return;
     }
 
@@ -595,7 +595,7 @@ const [isUploading, setIsUploading] = useState(false);
                   className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition inline-flex items-center gap-1.5"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  Выйти
+                  Sign Out
                 </button>
               </div>
             ) : (
@@ -604,13 +604,13 @@ const [isUploading, setIsUploading] = useState(false);
                   href="/login"
                   className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition"
                 >
-                  Войти
+                  Sign In
                 </Link>
                 <Link
                   href="/register"
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition"
                 >
-                  Регистрация
+                  Sign Up
                 </Link>
               </>
             )}

@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const [message, setMessage] = useState("Завершаем вход через Google...");
+  const [message, setMessage] = useState("Finishing Google sign-in...");
 
   useEffect(() => {
     let isMounted = true;
@@ -18,7 +18,7 @@ export default function AuthCallbackPage() {
 
       if (authError) {
         if (isMounted) {
-          setMessage("Не удалось войти через Google.");
+          setMessage("Could not sign in with Google.");
         }
         setTimeout(() => router.replace(`/login?error=${encodeURIComponent(authError)}`), 1500);
         return;
@@ -28,7 +28,7 @@ export default function AuthCallbackPage() {
 
       if (error) {
         if (isMounted) {
-          setMessage("Ошибка авторизации.");
+          setMessage("Authorization error.");
         }
         setTimeout(() => router.replace("/login?error=auth"), 1500);
         return;
@@ -44,7 +44,7 @@ export default function AuthCallbackPage() {
         const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
         if (exchangeError) {
           if (isMounted) {
-            setMessage("Не удалось сохранить сессию.");
+            setMessage("Could not save session.");
           }
           setTimeout(
             () => router.replace(`/login?error=${encodeURIComponent(exchangeError.message)}`),

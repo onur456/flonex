@@ -32,12 +32,12 @@ export default function RegisterPage() {
     setSuccess(null);
 
     if (password.length < 6) {
-      setError("Пароль должен быть не менее 6 символов.");
+      setError("Password must be at least 6 characters.");
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Пароли не совпадают.");
+      setError("Passwords do not match.");
       return;
     }
 
@@ -64,10 +64,10 @@ export default function RegisterPage() {
       }
 
       setSuccess(
-        "Аккаунт создан! Проверьте почту и подтвердите email, затем войдите."
+        "Account created! Check your inbox to confirm your email, then sign in."
       );
     } catch {
-      setError("Не удалось создать аккаунт. Попробуйте снова.");
+      setError("Could not create account. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -75,24 +75,24 @@ export default function RegisterPage() {
 
   return (
     <AuthShell
-      title="Регистрация"
-      subtitle="Создайте аккаунт Flonex"
+      title="Sign Up"
+      subtitle="Create your Flonex account"
       footer={
         <>
-          Уже есть аккаунт?{" "}
+          Already have an account?{" "}
           <Link href="/login" className="text-indigo-400 hover:text-indigo-300 font-medium">
-            Войти
+            Sign In
           </Link>
         </>
       }
     >
-      <GoogleSignInButton label="Зарегистрироваться через Google" onError={setError} />
+      <GoogleSignInButton label="Sign up with Google" onError={setError} />
       <AuthDivider />
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="name" className="text-xs text-slate-400 font-medium block mb-1.5">
-            Имя
+            Name
           </label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -101,7 +101,7 @@ export default function RegisterPage() {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ваше имя"
+              placeholder="Your name"
               required
               className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/80 transition"
             />
@@ -129,7 +129,7 @@ export default function RegisterPage() {
 
         <div>
           <label htmlFor="password" className="text-xs text-slate-400 font-medium block mb-1.5">
-            Пароль
+            Password
           </label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -138,7 +138,7 @@ export default function RegisterPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Минимум 6 символов"
+              placeholder="At least 6 characters"
               required
               minLength={6}
               autoComplete="new-password"
@@ -152,7 +152,7 @@ export default function RegisterPage() {
             htmlFor="confirmPassword"
             className="text-xs text-slate-400 font-medium block mb-1.5"
           >
-            Подтвердите пароль
+            Confirm password
           </label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -161,7 +161,7 @@ export default function RegisterPage() {
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Повторите пароль"
+              placeholder="Repeat password"
               required
               minLength={6}
               autoComplete="new-password"
@@ -190,10 +190,10 @@ export default function RegisterPage() {
           {isLoading ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Создаём аккаунт...
+              Creating account...
             </>
           ) : (
-            "Зарегистрироваться"
+            "Sign Up"
           )}
         </button>
       </form>

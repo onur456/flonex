@@ -48,7 +48,7 @@ export default function LoginPage() {
       router.push("/");
       router.refresh();
     } catch {
-      setError("Не удалось войти. Попробуйте снова.");
+      setError("Could not sign in. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -56,13 +56,13 @@ export default function LoginPage() {
 
   return (
     <AuthShell
-      title="Вход"
-      subtitle="Войдите в свой аккаунт Flonex"
+      title="Sign In"
+      subtitle="Sign in to your Flonex account"
       footer={
         <>
-          Нет аккаунта?{" "}
+          Don&apos;t have an account?{" "}
           <Link href="/register" className="text-indigo-400 hover:text-indigo-300 font-medium">
-            Зарегистрироваться
+            Sign Up
           </Link>
         </>
       }
@@ -92,7 +92,7 @@ export default function LoginPage() {
 
         <div>
           <label htmlFor="password" className="text-xs text-slate-400 font-medium block mb-1.5">
-            Пароль
+            Password
           </label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -101,7 +101,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Ваш пароль"
+              placeholder="Your password"
               required
               autoComplete="current-password"
               className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/80 transition"
@@ -123,10 +123,10 @@ export default function LoginPage() {
           {isLoading ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Входим...
+              Signing in...
             </>
           ) : (
-            "Войти"
+            "Sign In"
           )}
         </button>
       </form>
