@@ -26,6 +26,10 @@ export async function POST(request: Request) {
 
     const contentType = body?.contentType || "photo";
     const style = body?.style || "commercial";
+    const productName = body?.productName || "";
+    const category = body?.category || "";
+    const shotType = body?.shotType || "";
+    const shotTypePrompt = body?.shotTypePrompt || "";
 
     const apiKey = process.env.GEMINI_API_KEY;
 
@@ -54,11 +58,16 @@ Generate ONE unique, creative, high-converting English prompt for generating a p
 
 Content type: ${contentType}
 Style: ${style}
+${productName ? `Product: ${productName}` : ""}
+${category ? `Category: ${category}` : ""}
+${shotType ? `Shot type: ${shotType}` : ""}
+${shotTypePrompt ? `Shot type means: ${shotTypePrompt}` : ""}
 Random Seed: ${randomSeed}
 
 Instructions:
 - Be highly creative and unique every time.
 - Create a realistic commercial product photography scene.
+- Respect the shot type above: the scene must stay that kind of shot.
 - Include appropriate lighting, composition, background and atmosphere.
 - Make the result suitable for an e-commerce marketplace.
 - Return ONLY the prompt text.

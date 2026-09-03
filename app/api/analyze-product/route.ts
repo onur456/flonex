@@ -1,16 +1,7 @@
 import { NextResponse } from "next/server";
+import { CATEGORY_IDS } from "@/lib/categories";
 
 const MODEL = "gemini-3.5-flash-lite";
-
-const CATEGORIES = [
-  "clothing",
-  "accessories",
-  "food_drinks",
-  "cosmetics",
-  "gadgets",
-  "home_furniture",
-  "other",
-] as const;
 
 export async function POST(req: Request) {
   try {
@@ -56,13 +47,7 @@ Analyze this product image.
 Return a JSON object with:
 - productName: short product title
 - categoryId: exactly one of:
-  clothing
-  accessories
-  food_drinks
-  cosmetics
-  gadgets
-  home_furniture
-  other
+${CATEGORY_IDS.map((id) => `  ${id}`).join("\n")}
 
 Do not invent a brand or model that is not clearly visible.
 If the product cannot be identified reliably, use "other".
@@ -102,7 +87,7 @@ If the product cannot be identified reliably, use "other".
                 },
                 categoryId: {
                   type: "STRING",
-                  enum: CATEGORIES,
+                  enum: CATEGORY_IDS,
                 },
               },
               required: ["productName", "categoryId"],
@@ -164,11 +149,7 @@ If the product cannot be identified reliably, use "other".
       );
     }
 
-    if (
-      !CATEGORIES.includes(
-        data.categoryId as (typeof CATEGORIES)[number]
-      )
-    ) {
+    if (!CATEGORY_IDS.includes(data.categoryId)) {
       return NextResponse.json(
         { error: "Invalid categoryId" },
         { status: 502 }

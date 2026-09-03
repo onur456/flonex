@@ -1,9 +1,22 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import {
+  formatSupabaseError,
+  supabaseAnonKey,
+  supabaseUrl,
+} from "./supabaseConfig";
 
 function getSupabase(): SupabaseClient {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
   return createClient(supabaseUrl, supabaseAnonKey);
+}
+
+function extensionFromContentType(contentType: string): string {
+  if (contentType.includes("mp4")) return "mp4";
+  if (contentType.includes("webm")) return "webm";
+  if (contentType.includes("quicktime")) return "mov";
+  if (contentType.includes("jpeg")) return "jpg";
+  if (contentType.includes("webp")) return "webp";
+  if (contentType.includes("png")) return "png";
+  return "bin";
 }
 
 export async function saveGeneratedImageToStorage(
@@ -17,7 +30,7 @@ export async function saveGeneratedImageToStorage(
     }
 
     const contentType = response.headers.get("content-type") || "image/png";
-    const ext = contentType.includes("jpeg") ? "jpg" : "png";
+    const ext = extensionFromContentType(contentType);
     const fileName = `generated-${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
     const imageBuffer = await response.arrayBuffer();
 
@@ -31,7 +44,7 @@ export async function saveGeneratedImageToStorage(
       });
 
     if (uploadError) {
-      console.error("Storage upload error:", uploadError);
+      console.error("Storage upload error:", formatSupabaseError(uploadError));
       return null;
     }
 
@@ -41,7 +54,7 @@ export async function saveGeneratedImageToStorage(
 
     return publicUrlData.publicUrl;
   } catch (err) {
-    console.error("saveGeneratedImageToStorage error:", err);
+    console.error("saveGeneratedImageToStorage error:", formatSupabaseError(err));
     return null;
   }
 }
@@ -81,7 +94,7 @@ export async function saveGenerationRecord(data: {
     .single();
 
   if (error) {
-    console.error("generations insert error:", error);
+    console.error("generations insert error:", formatSupabaseError(error));
     return null;
   }
 

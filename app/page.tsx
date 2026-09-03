@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import type { User } from "@supabase/supabase-js";
 import { 
   Sparkles, 
   Image as ImageIcon, 
@@ -21,55 +22,24 @@ import {
   History,
   Wand2,
   ChevronDown,
-  Check
+  Check,
+  AlertTriangle,
+  LogOut
 } from "lucide-react";
 import { uploadProductImage } from "@/lib/uploadImage";
-import { supabase } from "@/lib/supabase";
-
-export const CATEGORIES = [
-  {
-    id: "clothing",
-    title: "Clothing & footwear",
-    subtitle: "clothes, shoes, headwear",
-    icon: "🧥",
-  },
-  {
-    id: "accessories",
-    title: "Accessories",
-    subtitle: "bags, watches, eyewear, jewelry",
-    icon: "👜",
-  },
-  {
-    id: "food_drinks",
-    title: "Food & drinks",
-    subtitle: "products, dishes, drinks, packaging",
-    icon: "🍽️",
-  },
-  {
-    id: "cosmetics",
-    title: "Cosmetics & skincare",
-    subtitle: "jars, bottles, tubes",
-    icon: "💄",
-  },
-  {
-    id: "gadgets",
-    title: "Gadgets & electronics",
-    subtitle: "phones, audio, tech gadgets",
-    icon: "📱",
-  },
-  {
-    id: "home_furniture",
-    title: "Home & furniture",
-    subtitle: "furniture, decor, lighting, interior pieces",
-    icon: "🛋️",
-  },
-  {
-    id: "other",
-    title: "Other",
-    subtitle: "if no other category fits",
-    icon: "📦",
-  },
-];
+import { formatSupabaseError, isSupabaseConfigured, supabase } from "@/lib/supabase";
+import {
+  CATEGORIES,
+  DEFAULT_CATEGORY,
+  findCategory,
+  type Category,
+} from "@/lib/categories";
+import {
+  CREDIT_PACKS,
+  DEFAULT_CREDIT_BALANCE,
+  DEFAULT_CREDIT_PACK,
+  stripePublishableKey,
+} from "@/lib/credits";
 
 interface GenerationItem {
   id: string;
@@ -79,19 +49,42 @@ interface GenerationItem {
   product_name?: string | null;
 }
 
+function isVideoMediaUrl(url: string): boolean {
+  const clean = url.split("?")[0].toLowerCase();
+  return (
+    clean.endsWith(".mp4") ||
+    clean.endsWith(".webm") ||
+    clean.endsWith(".mov")
+  );
+}
+
 export default function FlonexDashboard() {
   const [contentType, setContentType] = useState<"photo" | "card" | "video">("photo");
   const [aspectRatio, setAspectRatio] = useState("3:4");
   const [style, setStyle] = useState("commercial");
   
   // Кредиты
-  const [credits, setCredits] = useState(20);
+  const [credits, setCredits] = useState(DEFAULT_CREDIT_BALANCE);
+  const [isBuyingCredits, setIsBuyingCredits] = useState(false);
+  const creditsRequestUserId = useRef<string | null>(null);
 
   // Данные товара
   const [productName, setProductName] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[2]); // Default: Food & drinks
+  const [selectedCategory, setSelectedCategory] = useState<Category>(DEFAULT_CATEGORY);
+  const [selectedOptionId, setSelectedOptionId] = useState(DEFAULT_CATEGORY.options[0].id);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Выбранный подвариант съёмки внутри категории
+  const selectedOption =
+    selectedCategory.options.find((option) => option.id === selectedOptionId) ??
+    selectedCategory.options[0];
+
+  // Смена категории всегда сбрасывает подвариант на первый доступный
+  const changeCategory = (category: Category) => {
+    setSelectedCategory(category);
+    setSelectedOptionId(category.options[0].id);
+  };
 
   // Состояния файлов
   const [uploadedPublicUrl, setUploadedPublicUrl] = useState<string | null>(null);
@@ -100,13 +93,30 @@ const [isUploading, setIsUploading] = useState(false);
   // Состояния AI
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [generatedIsVideo, setGeneratedIsVideo] = useState(false);
 
   // История генераций
   const [history, setHistory] = useState<GenerationItem[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [supabaseStatus, setSupabaseStatus] = useState<"checking" | "ok" | "error">("checking");
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
 
   // Промпт и AI Idea
   const [customPrompt, setCustomPrompt] = useState("");
   const [isSuggestingPrompt, setIsSuggestingPrompt] = useState(false);
+
+  // Выбранный подвариант всегда попадает в промпт как основа сцены,
+  // а текст из поля Prompt уточняет её.
+  const buildPrompt = () => {
+    const subject = productName.trim() || "product";
+    const scene = `${subject} ${selectedOption.prompt}`;
+    const extra = customPrompt.trim();
+
+    return extra
+      ? `${scene}. ${extra}`
+      : `${scene}, commercial ${style} style, professional studio lighting, photorealistic 8k render`;
+  };
 
   const handleGenerateIdea = async () => {
     setIsSuggestingPrompt(true);
@@ -118,7 +128,9 @@ const [isUploading, setIsUploading] = useState(false);
           contentType, 
           style,
           productName,
-          category: selectedCategory.title
+          category: selectedCategory.title,
+          shotType: selectedOption.title,
+          shotTypePrompt: selectedOption.prompt
         }),
       });
 
@@ -142,7 +154,76 @@ const [isUploading, setIsUploading] = useState(false);
     fetchHistory();
   }, []);
 
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setAuthReady(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    const applyUser = (nextUser: User | null) => {
+      if (!cancelled) {
+        setUser(nextUser);
+        setAuthReady(true);
+        if (nextUser) {
+          void fetchCredits(nextUser.id);
+        } else {
+          setCredits(DEFAULT_CREDIT_BALANCE);
+        }
+      }
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      applyUser(session?.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      applyUser(session?.user ?? null);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout");
+    if (!checkout) return;
+
+    if (checkout === "success") {
+      if (user?.id) {
+        void fetchCredits(user.id);
+      }
+    }
+
+    window.history.replaceState({}, "", "/");
+  }, [user]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  const userLabel =
+    (typeof user?.user_metadata?.full_name === "string" && user.user_metadata.full_name) ||
+    (typeof user?.user_metadata?.name === "string" && user.user_metadata.name) ||
+    user?.email ||
+    "Аккаунт";
+
   const fetchHistory = async () => {
+    if (!isSupabaseConfigured) {
+      const message = formatSupabaseError("Cannot load history");
+      console.error("History fetch error:", message);
+      setHistoryError(message);
+      setSupabaseStatus("error");
+      return;
+    }
+
     const { data, error } = await supabase
       .from("generations")
       .select("*")
@@ -150,12 +231,111 @@ const [isUploading, setIsUploading] = useState(false);
       .limit(12);
 
     if (error) {
-      console.error("History fetch error:", error);
+      const message = formatSupabaseError(error);
+      console.error("History fetch error:", message);
+      setHistoryError(message);
+      setSupabaseStatus("error");
       return;
     }
 
-    if (data) {
-      setHistory(data);
+    setHistoryError(null);
+    setSupabaseStatus("ok");
+    setHistory(data ?? []);
+  };
+
+  const fetchCredits = async (userId: string) => {
+    if (!isSupabaseConfigured) return;
+    if (creditsRequestUserId.current === userId) return;
+    creditsRequestUserId.current = userId;
+
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("credits")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Credits fetch error:", formatSupabaseError(error));
+        return;
+      }
+
+      if (typeof data?.credits === "number") {
+        setCredits(data.credits);
+        return;
+      }
+
+      const { error: upsertError } = await supabase.from("profiles").upsert(
+        {
+          id: userId,
+          credits: DEFAULT_CREDIT_BALANCE,
+        },
+        { onConflict: "id", ignoreDuplicates: true }
+      );
+
+      if (upsertError && upsertError.code !== "23505") {
+        console.error("Profile create error:", formatSupabaseError(upsertError));
+        return;
+      }
+
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("credits")
+        .eq("id", userId)
+        .maybeSingle();
+
+      setCredits(
+        typeof existing?.credits === "number"
+          ? existing.credits
+          : DEFAULT_CREDIT_BALANCE
+      );
+    } finally {
+      if (creditsRequestUserId.current === userId) {
+        creditsRequestUserId.current = null;
+      }
+    }
+  };
+
+  const handleBuyCredits = async (
+    pack: (typeof CREDIT_PACKS)[number] = DEFAULT_CREDIT_PACK
+  ) => {
+    if (!user) {
+      alert("Войдите в аккаунт, чтобы купить кредиты.");
+      return;
+    }
+
+    if (!stripePublishableKey) {
+      alert("Stripe не настроен: добавьте NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY.");
+      return;
+    }
+
+    setIsBuyingCredits(true);
+
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          credits: pack.credits,
+          priceAmount: pack.priceAmount,
+        }),
+      });
+
+      const data = (await res.json()) as { url?: string; error?: string };
+
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || `Checkout status ${res.status}`);
+      }
+
+      window.location.href = data.url;
+    } catch (err) {
+      console.error("Checkout error:", err);
+      alert(
+        "Не удалось открыть оплату: " +
+          (err instanceof Error ? err.message : "unknown error")
+      );
+      setIsBuyingCredits(false);
     }
   };
 
@@ -183,20 +363,12 @@ const [isUploading, setIsUploading] = useState(false);
     setPreviewUrl(localPreviewUrl);
     setUploadedPublicUrl(null);
     setGeneratedImage(null);
+    setGeneratedIsVideo(false);
     setIsUploading(true);
     setIsAnalyzing(true);
 
     try {
-      const uploadResult: any = await uploadProductImage(file);
-      const publicUrl =
-        typeof uploadResult === "string"
-          ? uploadResult
-          : uploadResult?.publicUrl || uploadResult?.url || uploadResult?.data?.publicUrl;
-
-      if (!publicUrl) {
-        throw new Error("Image upload failed: public URL was not returned.");
-      }
-
+      const publicUrl = await uploadProductImage(file);
       setUploadedPublicUrl(publicUrl);
 
       const formData = new FormData();
@@ -218,17 +390,14 @@ const [isUploading, setIsUploading] = useState(false);
       }
 
       if (data.categoryId) {
-        const foundCategory = CATEGORIES.find(
-          (c) => c.id === data.categoryId
-        );
+        const foundCategory = findCategory(data.categoryId);
         if (foundCategory) {
-          setSelectedCategory(foundCategory);
+          changeCategory(foundCategory);
         }
       }
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Unknown error";
-      console.error("Image upload/analysis failed:", err);
+      const message = formatSupabaseError(err);
+      console.error("Image upload/analysis failed:", message);
       setUploadedPublicUrl(null);
       alert(`Ошибка загрузки/анализа: ${message}`);
     } finally {
@@ -252,31 +421,63 @@ const [isUploading, setIsUploading] = useState(false);
     setIsGenerating(true);
 
     try {
-      const res = await fetch("/api/generate", {
+      const isVideoMode = contentType === "video";
+      const endpoint = isVideoMode
+        ? "/api/generate-video"
+        : "/api/generate-image";
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageUrl: uploadedPublicUrl,
-          productName: productName,
+          prompt: buildPrompt(),
+          image_url: uploadedPublicUrl,
+          aspect_ratio: aspectRatio,
+          style,
+          productName,
           category: selectedCategory.id,
-          prompt: customPrompt || `Commercial product presentation for ${productName || "product"}, style: ${style}, high quality studio lighting, 8k render`,
-          style: style,
-          aspectRatio: aspectRatio,
-          contentType: contentType,
         }),
       });
 
-      const data = await res.json();
+      const data = (await res.json()) as {
+        success?: boolean;
+        error?: string;
+        resultUrl?: string;
+        image?: { url?: string };
+        video?: { url?: string };
+        generation?: GenerationItem;
+      };
+      const resultUrl =
+        data.resultUrl || data.image?.url || data.video?.url;
 
-      if (data.success && data.resultUrl) {
-        setGeneratedImage(data.resultUrl);
-        setCredits((prev) => Math.max(0, prev - 1));
+      if (data.success && resultUrl) {
+        setGeneratedImage(resultUrl);
+        setGeneratedIsVideo(isVideoMode || isVideoMediaUrl(resultUrl));
 
-        if (data.generation) {
+        if (user) {
+          const { data: newBalance, error: spendError } = await supabase.rpc(
+            "spend_credits",
+            { p_amount: 1 }
+          );
+
+          if (!spendError && typeof newBalance === "number") {
+            setCredits(newBalance);
+          } else {
+            if (spendError) {
+              console.error("spend_credits error:", formatSupabaseError(spendError));
+            }
+            setCredits((prev) => Math.max(0, prev - 1));
+          }
+        } else {
+          setCredits((prev) => Math.max(0, prev - 1));
+        }
+
+        const savedGeneration = data.generation;
+        if (savedGeneration) {
           setHistory((prev) => {
-            const exists = prev.some((item) => item.id === data.generation.id);
+            const exists = prev.some((item) => item.id === savedGeneration.id);
             if (exists) return prev;
-            return [data.generation, ...prev].slice(0, 12);
+            return [savedGeneration, ...prev].slice(0, 12);
           });
         } else {
           fetchHistory();
@@ -340,14 +541,27 @@ const [isUploading, setIsUploading] = useState(false);
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-slate-400 font-medium">Credits Balance</span>
             <span className="text-xs font-bold text-amber-400 flex items-center gap-1">
-              <Zap className="w-3 h-3 fill-amber-400" /> {credits} / 20
+              <Zap className="w-3 h-3 fill-amber-400" /> {credits}
             </span>
           </div>
-          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-3">
             <div 
               className="bg-gradient-to-r from-amber-500 to-indigo-500 h-full transition-all duration-300"
-              style={{ width: `${(credits / 20) * 100}%` }}
+              style={{ width: `${Math.min(100, (credits / 120) * 100)}%` }}
             />
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {CREDIT_PACKS.map((pack) => (
+              <button
+                key={pack.credits}
+                type="button"
+                onClick={() => handleBuyCredits(pack)}
+                disabled={isBuyingCredits}
+                className="px-1.5 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-600/30 border border-slate-700 hover:border-indigo-500/40 text-[10px] font-semibold text-slate-300 hover:text-white transition disabled:opacity-50"
+              >
+                {isBuyingCredits ? "..." : `${pack.credits} · ${pack.priceLabel}`}
+              </button>
+            ))}
           </div>
         </div>
       </aside>
@@ -361,21 +575,61 @@ const [isUploading, setIsUploading] = useState(false);
             <p className="text-xs text-slate-400">Generate studio-quality media & publish in 1 click</p>
           </div>
           <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition"
-            >
-              Войти
-            </Link>
-            <Link
-              href="/register"
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition"
-            >
-              Регистрация
-            </Link>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Supabase Storage Connected
-            </span>
+            {!authReady ? (
+              <span className="inline-flex items-center px-3 py-1.5 text-slate-500">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              </span>
+            ) : user ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-lg bg-slate-800/60 border border-slate-700/80">
+                  <div className="h-7 w-7 rounded-md bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-xs font-bold text-white">
+                    {userLabel.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-xs text-slate-200 max-w-[180px] truncate">
+                    {userLabel}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition inline-flex items-center gap-1.5"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Выйти
+                </button>
+              </div>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition"
+                >
+                  Войти
+                </Link>
+                <Link
+                  href="/register"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition"
+                >
+                  Регистрация
+                </Link>
+              </>
+            )}
+            {supabaseStatus === "error" ? (
+              <span
+                title={historyError ?? undefined}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20"
+              >
+                <AlertTriangle className="w-3.5 h-3.5" /> Supabase Unreachable
+              </span>
+            ) : supabaseStatus === "ok" ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Supabase Storage Connected
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking Supabase...
+              </span>
+            )}
           </div>
         </header>
 
@@ -525,7 +779,7 @@ const [isUploading, setIsUploading] = useState(false);
                               key={cat.id}
                               type="button"
                               onClick={() => {
-                                setSelectedCategory(cat);
+                                changeCategory(cat);
                                 setIsDropdownOpen(false);
                               }}
                               className={`flex items-start justify-between p-2.5 rounded-lg text-left transition ${
@@ -547,6 +801,46 @@ const [isUploading, setIsUploading] = useState(false);
                         })}
                       </div>
                     )}
+                  </div>
+
+                  {/* ПОДВАРИАНТЫ ВЫБРАННОЙ КАТЕГОРИИ */}
+                  <div>
+                    <div className="flex items-baseline justify-between mb-1">
+                      <label className="text-xs text-slate-400 font-medium">
+                        Shot type for {selectedCategory.title}
+                      </label>
+                      <span className="text-[10px] text-slate-500">
+                        {selectedCategory.options.length} options
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 bg-slate-950/90 border border-slate-800 rounded-xl">
+                      {selectedCategory.options.map((option) => {
+                        const isSelected = selectedOption.id === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => setSelectedOptionId(option.id)}
+                            title={option.prompt}
+                            className={`flex items-start justify-between gap-2 p-2.5 rounded-lg text-left transition ${
+                              isSelected
+                                ? "bg-indigo-600/20 border border-indigo-500/40 text-white"
+                                : "border border-transparent hover:bg-slate-800/50 text-slate-300"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xl shrink-0">{option.icon}</span>
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold truncate">{option.title}</div>
+                                <div className="text-[10px] text-slate-400 truncate">({option.subtitle})</div>
+                              </div>
+                            </div>
+                            {isSelected && <Check className="w-4 h-4 text-indigo-400 mt-1 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -630,6 +924,12 @@ const [isUploading, setIsUploading] = useState(false);
                     placeholder={`Describe how you want your ${contentType} to look, or click 'AI Idea' above...`}
                     className="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/80 transition resize-none"
                   />
+                  <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
+                    <span className="text-slate-400">
+                      {selectedCategory.icon} {selectedOption.title}:
+                    </span>{" "}
+                    {selectedOption.prompt}
+                  </p>
                 </div>
               </div>
 
@@ -668,17 +968,30 @@ const [isUploading, setIsUploading] = useState(false);
                     <Sparkles className="w-6 h-6 text-indigo-400 absolute animate-pulse" />
                   </div>
                   <p className="text-sm font-medium text-slate-300">Creating Studio Visuals...</p>
-                  <p className="text-xs text-slate-500">Fal.ai Flux engine in action</p>
+                  <p className="text-xs text-slate-500">
+                    {contentType === "video"
+                      ? "Kling image-to-video in action — this can take 1–2 minutes"
+                      : "Fal.ai FLUX.1 [dev] engine in action"}
+                  </p>
                 </div>
               ) : generatedImage ? (
                 <div className="w-full h-full flex flex-col items-center gap-4">
-                  <div className="relative w-full h-80 rounded-xl overflow-hidden border border-slate-800">
-                    <img src={generatedImage} alt="Generated Visual" className="w-full h-full object-cover" />
+                  <div className="relative w-full h-80 rounded-xl overflow-hidden border border-slate-800 bg-slate-950">
+                    {generatedIsVideo ? (
+                      <video
+                        src={generatedImage}
+                        controls
+                        playsInline
+                        className="w-full h-full object-contain bg-black"
+                      />
+                    ) : (
+                      <img src={generatedImage} alt="Generated Visual" className="w-full h-full object-cover" />
+                    )}
                   </div>
                   <a 
                     href={generatedImage} 
                     target="_blank" 
-                    download="flonex-render.png"
+                    download={generatedIsVideo ? "flonex-render.mp4" : "flonex-render.png"}
                     className="w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 flex items-center justify-center gap-2 border border-slate-700 transition"
                   >
                     <Download className="w-4 h-4" /> Download High-Res Result
@@ -708,24 +1021,53 @@ const [isUploading, setIsUploading] = useState(false);
               <span className="text-xs text-slate-500">{history.length} saved</span>
             </div>
 
+            {historyError && (
+              <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5">
+                <AlertTriangle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-rose-300">Не удалось загрузить историю из Supabase</p>
+                  <p className="text-[11px] text-rose-200/80 mt-1 break-words">{historyError}</p>
+                  <button
+                    type="button"
+                    onClick={fetchHistory}
+                    className="mt-2 px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-[11px] font-semibold text-rose-200 transition"
+                  >
+                    Повторить
+                  </button>
+                </div>
+              </div>
+            )}
+
             {history.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 {history.map((item) => (
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setGeneratedImage(item.result_image_url)}
+                    onClick={() => {
+                      setGeneratedImage(item.result_image_url);
+                      setGeneratedIsVideo(isVideoMediaUrl(item.result_image_url));
+                    }}
                     className={`group relative h-36 rounded-xl overflow-hidden border bg-slate-900 transition text-left ${
                       generatedImage === item.result_image_url
                         ? "border-indigo-500 ring-2 ring-indigo-500/30"
                         : "border-slate-800 hover:border-indigo-500/50"
                     }`}
                   >
-                    <img
-                      src={item.result_image_url}
-                      alt={item.product_name || "Generation"}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                    />
+                    {isVideoMediaUrl(item.result_image_url) ? (
+                      <video
+                        src={item.result_image_url}
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                    ) : (
+                      <img
+                        src={item.result_image_url}
+                        alt={item.product_name || "Generation"}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                    )}
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 to-transparent p-2 opacity-0 group-hover:opacity-100 transition">
                       <p className="text-[10px] text-slate-300 truncate">
                         {item.product_name || "Untitled"}

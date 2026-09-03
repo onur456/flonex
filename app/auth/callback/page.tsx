@@ -39,6 +39,25 @@ export default function AuthCallbackPage() {
         return;
       }
 
+      const code = params.get("code");
+      if (code) {
+        const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          if (isMounted) {
+            setMessage("Не удалось сохранить сессию.");
+          }
+          setTimeout(
+            () => router.replace(`/login?error=${encodeURIComponent(exchangeError.message)}`),
+            1500
+          );
+          return;
+        }
+        if (data.session) {
+          router.replace("/");
+          return;
+        }
+      }
+
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
         if (event === "SIGNED_IN" && newSession) {
           router.replace("/");

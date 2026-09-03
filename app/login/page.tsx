@@ -21,7 +21,13 @@ export default function LoginPage() {
     if (authError) {
       setError(decodeURIComponent(authError));
     }
-  }, [searchParams]);
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        router.replace("/");
+      }
+    });
+  }, [searchParams, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
