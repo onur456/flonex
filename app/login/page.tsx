@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Mail, Lock } from "lucide-react";
@@ -8,7 +8,7 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthDivider, GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { supabase } from "@/lib/supabase";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -55,18 +55,7 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthShell
-      title="Sign In"
-      subtitle="Sign in to your Flonex account"
-      footer={
-        <>
-          Don&apos;t have an account?{" "}
-          <Link href="/register" className="text-indigo-400 hover:text-indigo-300 font-medium">
-            Sign Up
-          </Link>
-        </>
-      }
-    >
+    <>
       <GoogleSignInButton onError={setError} />
       <AuthDivider />
 
@@ -130,6 +119,33 @@ export default function LoginPage() {
           )}
         </button>
       </form>
+    </>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <AuthShell
+      title="Sign In"
+      subtitle="Sign in to your Flonex account"
+      footer={
+        <>
+          Don&apos;t have an account?{" "}
+          <Link href="/register" className="text-indigo-400 hover:text-indigo-300 font-medium">
+            Sign Up
+          </Link>
+        </>
+      }
+    >
+      <Suspense
+        fallback={
+          <div className="flex justify-center py-10">
+            <Loader2 className="w-5 h-5 animate-spin text-slate-500" />
+          </div>
+        }
+      >
+        <LoginForm />
+      </Suspense>
     </AuthShell>
   );
 }
