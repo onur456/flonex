@@ -73,11 +73,6 @@ export interface PublishResponse {
   error?: string;
 }
 
-export interface SocialAccountsResponse {
-  accounts: SocialAccount[];
-  error?: string;
-}
-
 export function isSocialPlatform(value: unknown): value is SocialPlatform {
   return SOCIAL_PLATFORMS.some((platform) => platform.id === value);
 }

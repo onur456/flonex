@@ -1,64 +1,131 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   SOCIAL_PLATFORMS,
   disconnectedAccount,
   type SocialAccount,
   type SocialPlatform,
 } from "./social";
+import { formatSupabaseError } from "./supabaseConfig";
+
+const TABLE = "social_accounts";
+
+interface SocialAccountRow {
+  platform: string;
+  username: string | null;
+  avatar_url: string | null;
+  auto_publish: boolean;
+  connected_at: string;
+}
 
 /**
- * Заглушка вместо таблицы `social_accounts` в Supabase. Состояние живёт в памяти
- * процесса, поэтому сбрасывается при перезапуске и не разделяется между
- * serverless-инстансами — этого достаточно, пока не подключён реальный OAuth.
+ * Профиль, который вернул бы OAuth платформы. Остаётся заглушкой до подключения
+ * реального Meta Login / TikTok Login Kit — в базу уже пишутся настоящие строки.
  */
-const accounts = new Map<SocialPlatform, SocialAccount>(
-  SOCIAL_PLATFORMS.map((platform) => [platform.id, disconnectedAccount(platform.id)])
-);
-
-/** Имена, которые возвращает вместо реального OAuth-профиля. */
 const MOCK_USERNAMES: Record<SocialPlatform, string> = {
   instagram: "@flonex.studio",
   facebook: "Flonex Store",
   tiktok: "@flonex",
 };
 
-export function listSocialAccounts(): SocialAccount[] {
+function toAccount(row: SocialAccountRow): SocialAccount {
+  return {
+    platform: row.platform as SocialPlatform,
+    status: "connected",
+    username: row.username,
+    avatarUrl: row.avatar_url,
+    autoPublish: row.auto_publish,
+    connectedAt: row.connected_at,
+  };
+}
+
+const ROW_COLUMNS = "platform, username, avatar_url, auto_publish, connected_at";
+
+/** Возвращает все платформы: у неподключённых — заготовка со статусом disconnected. */
+export async function listSocialAccounts(
+  client: SupabaseClient,
+  userId: string
+): Promise<SocialAccount[]> {
+  const { data, error } = await client
+    .from(TABLE)
+    .select(ROW_COLUMNS)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(formatSupabaseError(error));
+  }
+
+  const connected = new Map<string, SocialAccount>(
+    (data ?? []).map((row) => [row.platform, toAccount(row as SocialAccountRow)])
+  );
+
   return SOCIAL_PLATFORMS.map(
-    (platform) => accounts.get(platform.id) ?? disconnectedAccount(platform.id)
+    (platform) => connected.get(platform.id) ?? disconnectedAccount(platform.id)
   );
 }
 
-export function connectSocialAccount(platform: SocialPlatform): SocialAccount {
-  const account: SocialAccount = {
-    platform,
-    status: "connected",
-    username: MOCK_USERNAMES[platform],
-    avatarUrl: null,
-    autoPublish: false,
-    connectedAt: new Date().toISOString(),
-  };
+export async function connectSocialAccount(
+  client: SupabaseClient,
+  userId: string,
+  platform: SocialPlatform
+): Promise<SocialAccount> {
+  // auto_publish намеренно не передаём: при повторном подключении настройка
+  // пользователя должна сохраниться, а у новой строки сработает default false.
+  const { data, error } = await client
+    .from(TABLE)
+    .upsert(
+      {
+        user_id: userId,
+        platform,
+        username: MOCK_USERNAMES[platform],
+        avatar_url: null,
+        connected_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,platform" }
+    )
+    .select(ROW_COLUMNS)
+    .single();
 
-  accounts.set(platform, account);
-  return account;
-}
-
-export function disconnectSocialAccount(platform: SocialPlatform): SocialAccount {
-  const account = disconnectedAccount(platform);
-  accounts.set(platform, account);
-  return account;
-}
-
-export function setAutoPublish(
-  platform: SocialPlatform,
-  autoPublish: boolean
-): SocialAccount | null {
-  const current = accounts.get(platform);
-
-  // Авто-публикацию нельзя включить для аккаунта, который ещё не подключён.
-  if (!current || current.status !== "connected") {
-    return null;
+  if (error || !data) {
+    throw new Error(formatSupabaseError(error ?? "Не удалось подключить аккаунт"));
   }
 
-  const account: SocialAccount = { ...current, autoPublish };
-  accounts.set(platform, account);
-  return account;
+  return toAccount(data as SocialAccountRow);
+}
+
+export async function disconnectSocialAccount(
+  client: SupabaseClient,
+  userId: string,
+  platform: SocialPlatform
+): Promise<void> {
+  const { error } = await client
+    .from(TABLE)
+    .delete()
+    .eq("user_id", userId)
+    .eq("platform", platform);
+
+  if (error) {
+    throw new Error(formatSupabaseError(error));
+  }
+}
+
+/** `null`, если аккаунт ещё не подключён — включать авто-публикацию нечему. */
+export async function setAutoPublish(
+  client: SupabaseClient,
+  userId: string,
+  platform: SocialPlatform,
+  autoPublish: boolean
+): Promise<SocialAccount | null> {
+  const { data, error } = await client
+    .from(TABLE)
+    .update({ auto_publish: autoPublish })
+    .eq("user_id", userId)
+    .eq("platform", platform)
+    .select(ROW_COLUMNS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(formatSupabaseError(error));
+  }
+
+  return data ? toAccount(data as SocialAccountRow) : null;
 }

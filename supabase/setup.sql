@@ -164,3 +164,43 @@ $$;
 
 revoke all on function public.spend_credits(integer) from public, anon;
 grant execute on function public.spend_credits(integer) to authenticated;
+
+-- Connected social accounts for auto-publishing.
+-- Строка существует только у подключённого аккаунта: отключение — это delete.
+-- Внимание: когда появится реальный OAuth, access/refresh-токены платформ нельзя
+-- держать здесь — пользователь читает эту таблицу. Для них нужна отдельная
+-- таблица, доступная только service_role.
+create table if not exists public.social_accounts (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  platform text not null,
+  username text,
+  avatar_url text,
+  auto_publish boolean not null default false,
+  connected_at timestamptz not null default now(),
+  primary key (user_id, platform),
+  constraint social_accounts_platform_check
+    check (platform in ('instagram', 'facebook', 'tiktok'))
+);
+
+alter table public.social_accounts enable row level security;
+
+drop policy if exists "Users can read own social accounts" on public.social_accounts;
+create policy "Users can read own social accounts"
+  on public.social_accounts for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can connect own social accounts" on public.social_accounts;
+create policy "Users can connect own social accounts"
+  on public.social_accounts for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update own social accounts" on public.social_accounts;
+create policy "Users can update own social accounts"
+  on public.social_accounts for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can disconnect own social accounts" on public.social_accounts;
+create policy "Users can disconnect own social accounts"
+  on public.social_accounts for delete
+  using (auth.uid() = user_id);

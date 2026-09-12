@@ -16,13 +16,12 @@ import {
   acceptsMediaType,
   findSocialPlatform,
   type PublishPayload,
-  type PublishResponse,
   type PublishTargetResult,
   type SocialAccount,
-  type SocialAccountsResponse,
   type SocialMediaType,
   type SocialPlatform,
 } from "@/lib/social";
+import { enhanceCaption, fetchAccounts, publishAsset } from "@/lib/socialClient";
 import { PlatformIcon, PlatformTile } from "./PlatformIcon";
 
 export interface PublishMedia {
@@ -70,16 +69,15 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
   useEffect(() => {
     let cancelled = false;
 
-    fetch("/api/social/accounts")
-      .then((res) => res.json() as Promise<SocialAccountsResponse>)
+    fetchAccounts()
       .then((data) => {
         if (cancelled) return;
-        setAccounts(data.accounts ?? []);
+        setAccounts(data.accounts);
       })
       .catch((err) => {
         if (cancelled) return;
         console.error("Social accounts fetch error:", err);
-        setError("Не удалось загрузить список аккаунтов");
+        setError(err instanceof Error ? err.message : "Не удалось загрузить аккаунты");
       })
       .finally(() => {
         if (!cancelled) setIsLoadingAccounts(false);
@@ -137,19 +135,7 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
   const handleEnhanceCaption = async () => {
     setIsEnhancing(true);
     try {
-      const res = await fetch("/api/social/caption", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caption, productName, platforms: selected }),
-      });
-
-      const data = (await res.json()) as { caption?: string; error?: string };
-
-      if (!res.ok || !data.caption) {
-        throw new Error(data.error || `Status ${res.status}`);
-      }
-
-      setCaption(data.caption);
+      setCaption(await enhanceCaption({ caption, productName, platforms: selected }));
       setError(null);
     } catch (err) {
       console.error("Caption enhance error:", err);
@@ -190,18 +176,7 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
     setError(null);
 
     try {
-      const res = await fetch("/api/social/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = (await res.json()) as PublishResponse;
-
-      if (!res.ok) {
-        throw new Error(data.error || `Status ${res.status}`);
-      }
-
+      const data = await publishAsset(payload);
       setResults(data.results);
     } catch (err) {
       console.error("Publish error:", err);

@@ -8,8 +8,7 @@ import { ToggleSwitch } from "./ToggleSwitch";
 interface SocialAccountCardProps {
   account: SocialAccount;
   isPending: boolean;
-  /** OAuth-переход делаем ссылкой: реальный провайдер уводит со страницы. */
-  connectHref: string;
+  onConnect: () => void;
   onDisconnect: () => void;
   onToggleAutoPublish: (enabled: boolean) => void;
 }
@@ -37,7 +36,7 @@ function AccountAvatar({ account }: { account: SocialAccount }) {
 export function SocialAccountCard({
   account,
   isPending,
-  connectHref,
+  onConnect,
   onDisconnect,
   onToggleAutoPublish,
 }: SocialAccountCardProps) {
@@ -86,29 +85,25 @@ export function SocialAccountCard({
         />
       </div>
 
-      {isConnected ? (
-        <button
-          type="button"
-          onClick={onDisconnect}
-          disabled={isPending}
-          className="w-full py-2.5 rounded-xl text-xs font-semibold transition inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-rose-500/20 border border-slate-700 hover:border-rose-500/40 text-slate-200 hover:text-rose-200 disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {isPending ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Unlink className="w-3.5 h-3.5" />
-          )}
-          Disconnect
-        </button>
-      ) : (
-        <a
-          href={connectHref}
-          className="w-full py-2.5 rounded-xl text-xs font-semibold transition inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white"
-        >
+      <button
+        type="button"
+        onClick={isConnected ? onDisconnect : onConnect}
+        disabled={isPending}
+        className={`w-full py-2.5 rounded-xl text-xs font-semibold transition inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
+          isConnected
+            ? "bg-slate-800 hover:bg-rose-500/20 border border-slate-700 hover:border-rose-500/40 text-slate-200 hover:text-rose-200"
+            : "bg-indigo-600 hover:bg-indigo-500 text-white"
+        }`}
+      >
+        {isPending ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : isConnected ? (
+          <Unlink className="w-3.5 h-3.5" />
+        ) : (
           <Link2 className="w-3.5 h-3.5" />
-          Connect {meta.title}
-        </a>
-      )}
+        )}
+        {isConnected ? "Disconnect" : `Connect ${meta.title}`}
+      </button>
     </div>
   );
 }

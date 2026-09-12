@@ -8,6 +8,7 @@ import {
   type SocialPlatform,
 } from "@/lib/social";
 import { listSocialAccounts } from "@/lib/socialStore";
+import { getRequestAuth } from "@/lib/supabaseRequest";
 
 export const runtime = "nodejs";
 
@@ -50,6 +51,15 @@ function isHttpUrl(value: unknown): value is string {
  * отдавать клиенту id задания, а не готовый permalink.
  */
 export async function POST(request: NextRequest) {
+  const auth = await getRequestAuth(request);
+
+  if (!auth) {
+    return NextResponse.json(
+      { error: "Войдите в аккаунт, чтобы публиковать" },
+      { status: 401 }
+    );
+  }
+
   const body = asRecord(await request.json().catch(() => ({})));
 
   const mediaUrl = body.mediaUrl;
@@ -106,7 +116,16 @@ export async function POST(request: NextRequest) {
     scheduledAt = parsed.toISOString();
   }
 
-  const accounts = listSocialAccounts();
+  let accounts;
+  try {
+    accounts = await listSocialAccounts(auth.client, auth.userId);
+  } catch (error) {
+    console.error("[social/publish]", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Ошибка Supabase" },
+      { status: 500 }
+    );
+  }
 
   await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
 

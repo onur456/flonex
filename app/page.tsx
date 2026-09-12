@@ -27,8 +27,7 @@ import {
   Send
 } from "lucide-react";
 import { PublishModal, type PublishMedia } from "@/components/social/PublishModal";
-import { SocialAccounts, type SocialNotice } from "@/components/social/SocialAccounts";
-import { findSocialPlatform, isSocialPlatform } from "@/lib/social";
+import { SocialAccounts } from "@/components/social/SocialAccounts";
 import { uploadProductImage } from "@/lib/uploadImage";
 import { formatSupabaseError, isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
@@ -118,7 +117,6 @@ const [isUploading, setIsUploading] = useState(false);
 
   // Публикация в соцсети
   const [isPublishOpen, setIsPublishOpen] = useState(false);
-  const [socialNotice, setSocialNotice] = useState<SocialNotice | null>(null);
 
   // История генераций
   const [history, setHistory] = useState<GenerationItem[]>([]);
@@ -228,28 +226,6 @@ const [isUploading, setIsUploading] = useState(false);
 
     window.history.replaceState({}, "", "/");
   }, [user]);
-
-  // Возврат из OAuth: /?view=social&social=connected&provider=instagram.
-  // Читаем через window.location, а не useSearchParams, чтобы страница осталась статической.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const social = params.get("social");
-    const provider = params.get("provider");
-
-    if (params.get("view") !== "social" && !social) return;
-
-    setActiveView("social");
-
-    const label = isSocialPlatform(provider) ? findSocialPlatform(provider).title : "Аккаунт";
-
-    if (social === "connected") {
-      setSocialNotice({ tone: "success", text: `${label} подключён.` });
-    } else if (social === "error") {
-      setSocialNotice({ tone: "error", text: `Не удалось подключить ${label}.` });
-    }
-
-    window.history.replaceState({}, "", "/");
-  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -693,7 +669,7 @@ const [isUploading, setIsUploading] = useState(false);
         {activeView === "social" && (
           <div className="p-8 max-w-6xl mx-auto w-full">
             <SocialAccounts
-              notice={socialNotice}
+              isSignedIn={Boolean(user)}
               canPublish={Boolean(publishMedia)}
               onPublishRequest={() => setIsPublishOpen(true)}
             />

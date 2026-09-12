@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSocialPlatform } from "@/lib/social";
 import {
+  connectSocialAccount,
   disconnectSocialAccount,
   listSocialAccounts,
   setAutoPublish,
 } from "@/lib/socialStore";
+import { getRequestAuth } from "@/lib/supabaseRequest";
 
 export const runtime = "nodejs";
 
@@ -15,51 +17,104 @@ function asRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
-export async function GET() {
-  return NextResponse.json({ accounts: listSocialAccounts() });
+function unauthorized() {
+  return NextResponse.json(
+    { error: "Войдите в аккаунт, чтобы управлять подключениями" },
+    { status: 401 }
+  );
+}
+
+function failed(error: unknown) {
+  console.error("[social/accounts]", error);
+  return NextResponse.json(
+    { error: error instanceof Error ? error.message : "Ошибка Supabase" },
+    { status: 500 }
+  );
+}
+
+export async function GET(request: NextRequest) {
+  const auth = await getRequestAuth(request);
+  if (!auth) return unauthorized();
+
+  try {
+    return NextResponse.json({
+      accounts: await listSocialAccounts(auth.client, auth.userId),
+    });
+  } catch (error) {
+    return failed(error);
+  }
+}
+
+/**
+ * Подключение аккаунта. Пока это заглушка вместо OAuth: реальная версия должна
+ * уводить пользователя на authorize-страницу платформы и обменивать `code` на
+ * токен в серверном callback, для чего сессию придётся перевести на cookie
+ * (`@supabase/ssr`) — иначе сервер не узнает пользователя при возврате.
+ */
+export async function POST(request: NextRequest) {
+  const auth = await getRequestAuth(request);
+  if (!auth) return unauthorized();
+
+  const body = asRecord(await request.json().catch(() => ({})));
+  const platform = body.platform;
+
+  if (!isSocialPlatform(platform)) {
+    return NextResponse.json({ error: "Неизвестная платформа" }, { status: 400 });
+  }
+
+  try {
+    return NextResponse.json({
+      account: await connectSocialAccount(auth.client, auth.userId, platform),
+    });
+  } catch (error) {
+    return failed(error);
+  }
 }
 
 /** Переключение режима авто-публикации у подключённого аккаунта. */
 export async function PATCH(request: NextRequest) {
+  const auth = await getRequestAuth(request);
+  if (!auth) return unauthorized();
+
   const body = asRecord(await request.json().catch(() => ({})));
   const platform = body.platform;
   const autoPublish = body.autoPublish;
 
   if (!isSocialPlatform(platform)) {
-    return NextResponse.json(
-      { error: "Неизвестная платформа" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Неизвестная платформа" }, { status: 400 });
   }
 
   if (typeof autoPublish !== "boolean") {
-    return NextResponse.json(
-      { error: "autoPublish должен быть boolean" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "autoPublish должен быть boolean" }, { status: 400 });
   }
 
-  const account = setAutoPublish(platform, autoPublish);
+  try {
+    const account = await setAutoPublish(auth.client, auth.userId, platform, autoPublish);
 
-  if (!account) {
-    return NextResponse.json(
-      { error: "Сначала подключите аккаунт" },
-      { status: 409 }
-    );
+    if (!account) {
+      return NextResponse.json({ error: "Сначала подключите аккаунт" }, { status: 409 });
+    }
+
+    return NextResponse.json({ account });
+  } catch (error) {
+    return failed(error);
   }
-
-  return NextResponse.json({ account });
 }
 
 export async function DELETE(request: NextRequest) {
+  const auth = await getRequestAuth(request);
+  if (!auth) return unauthorized();
+
   const platform = request.nextUrl.searchParams.get("platform");
 
   if (!isSocialPlatform(platform)) {
-    return NextResponse.json(
-      { error: "Неизвестная платформа" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Неизвестная платформа" }, { status: 400 });
   }
 
-  return NextResponse.json({ account: disconnectSocialAccount(platform) });
+  try {
+    await disconnectSocialAccount(auth.client, auth.userId, platform);
+    return NextResponse.json({ platform });
+  } catch (error) {
+    return failed(error);
+  }
 }
