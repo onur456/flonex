@@ -13,7 +13,6 @@ import {
   Store, 
   BarChart3, 
   Share2, 
-  Settings, 
   Zap, 
   CheckCircle2, 
   ArrowRight,
@@ -528,10 +527,6 @@ const [isUploading, setIsUploading] = useState(false);
             <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 font-medium text-sm transition">
               <Share2 className="w-4 h-4" />
               Social Auto-Publish
-            </button>
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 font-medium text-sm transition">
-              <Settings className="w-4 h-4" />
-              Integrations API
             </button>
           </nav>
         </div>
