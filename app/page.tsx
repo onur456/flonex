@@ -21,10 +21,14 @@ import {
   History,
   Wand2,
   ChevronDown,
-  Check,
+  Check, 
   AlertTriangle,
-  LogOut
+  LogOut,
+  Send
 } from "lucide-react";
+import { PublishModal, type PublishMedia } from "@/components/social/PublishModal";
+import { SocialAccounts, type SocialNotice } from "@/components/social/SocialAccounts";
+import { findSocialPlatform, isSocialPlatform } from "@/lib/social";
 import { uploadProductImage } from "@/lib/uploadImage";
 import { formatSupabaseError, isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
@@ -48,6 +52,23 @@ interface GenerationItem {
   product_name?: string | null;
 }
 
+/** Разделы сайдбара, у которых есть собственный рабочий экран. */
+type WorkspaceView = "create" | "social";
+
+const WORKSPACE_HEADERS: Record<WorkspaceView, { title: string; subtitle: string }> = {
+  create: {
+    title: "Content Studio",
+    subtitle: "Generate studio-quality media & publish in 1 click",
+  },
+  social: {
+    title: "Social Auto-Publish",
+    subtitle: "Connect accounts and push every generation to your channels",
+  },
+};
+
+const NAV_PLACEHOLDER_CLASS =
+  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/50";
+
 function isVideoMediaUrl(url: string): boolean {
   const clean = url.split("?")[0].toLowerCase();
   return (
@@ -58,6 +79,7 @@ function isVideoMediaUrl(url: string): boolean {
 }
 
 export default function FlonexDashboard() {
+  const [activeView, setActiveView] = useState<WorkspaceView>("create");
   const [contentType, setContentType] = useState<"photo" | "card" | "video">("photo");
   const [aspectRatio, setAspectRatio] = useState("3:4");
   const [style, setStyle] = useState("commercial");
@@ -93,6 +115,10 @@ const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [generatedIsVideo, setGeneratedIsVideo] = useState(false);
+
+  // Публикация в соцсети
+  const [isPublishOpen, setIsPublishOpen] = useState(false);
+  const [socialNotice, setSocialNotice] = useState<SocialNotice | null>(null);
 
   // История генераций
   const [history, setHistory] = useState<GenerationItem[]>([]);
@@ -202,6 +228,28 @@ const [isUploading, setIsUploading] = useState(false);
 
     window.history.replaceState({}, "", "/");
   }, [user]);
+
+  // Возврат из OAuth: /?view=social&social=connected&provider=instagram.
+  // Читаем через window.location, а не useSearchParams, чтобы страница осталась статической.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const social = params.get("social");
+    const provider = params.get("provider");
+
+    if (params.get("view") !== "social" && !social) return;
+
+    setActiveView("social");
+
+    const label = isSocialPlatform(provider) ? findSocialPlatform(provider).title : "Аккаунт";
+
+    if (social === "connected") {
+      setSocialNotice({ tone: "success", text: `${label} подключён.` });
+    } else if (social === "error") {
+      setSocialNotice({ tone: "error", text: `Не удалось подключить ${label}.` });
+    }
+
+    window.history.replaceState({}, "", "/");
+  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -492,6 +540,19 @@ const [isUploading, setIsUploading] = useState(false);
     }
   };
 
+  const navItemClass = (view: WorkspaceView) =>
+    `w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition border ${
+      activeView === view
+        ? "bg-indigo-600/10 text-indigo-400 border-indigo-500/20"
+        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border-transparent"
+    }`;
+
+  const workspaceHeader = WORKSPACE_HEADERS[activeView];
+
+  const publishMedia: PublishMedia | null = generatedImage
+    ? { url: generatedImage, type: generatedIsVideo ? "video" : "image" }
+    : null;
+
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden">
       {/* SIDEBAR */}
@@ -512,19 +573,19 @@ const [isUploading, setIsUploading] = useState(false);
 
           {/* NAVIGATION */}
           <nav className="space-y-1">
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg bg-indigo-600/10 text-indigo-400 font-medium text-sm border border-indigo-500/20">
+            <button type="button" onClick={() => setActiveView("create")} className={navItemClass("create")}>
               <Sparkles className="w-4 h-4" />
               Create Content
             </button>
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 font-medium text-sm transition">
+            <button className={NAV_PLACEHOLDER_CLASS}>
               <Store className="w-4 h-4" />
               Products & Stores
             </button>
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 font-medium text-sm transition">
+            <button className={NAV_PLACEHOLDER_CLASS}>
               <BarChart3 className="w-4 h-4" />
               A/B Tests & CTR
             </button>
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 font-medium text-sm transition">
+            <button type="button" onClick={() => setActiveView("social")} className={navItemClass("social")}>
               <Share2 className="w-4 h-4" />
               Social Auto-Publish
             </button>
@@ -566,8 +627,8 @@ const [isUploading, setIsUploading] = useState(false);
         {/* HEADER */}
         <header className="h-16 border-b border-slate-800/80 px-8 flex items-center justify-between bg-slate-900/20 backdrop-blur-md sticky top-0 z-10">
           <div>
-            <h2 className="text-lg font-semibold text-slate-100">Content Studio</h2>
-            <p className="text-xs text-slate-400">Generate studio-quality media & publish in 1 click</p>
+            <h2 className="text-lg font-semibold text-slate-100">{workspaceHeader.title}</h2>
+            <p className="text-xs text-slate-400">{workspaceHeader.subtitle}</p>
           </div>
           <div className="flex items-center gap-3">
             {!authReady ? (
@@ -628,8 +689,24 @@ const [isUploading, setIsUploading] = useState(false);
           </div>
         </header>
 
-        {/* WORKSPACE CONTENT */}
-        <div className="p-8 max-w-6xl mx-auto w-full space-y-8">
+        {/* SOCIAL AUTO-PUBLISH */}
+        {activeView === "social" && (
+          <div className="p-8 max-w-6xl mx-auto w-full">
+            <SocialAccounts
+              notice={socialNotice}
+              canPublish={Boolean(publishMedia)}
+              onPublishRequest={() => setIsPublishOpen(true)}
+            />
+          </div>
+        )}
+
+        {/* WORKSPACE CONTENT — остаётся в DOM, чтобы загруженное фото и промпт
+            не сбрасывались при переключении разделов сайдбара */}
+        <div
+          className={`p-8 max-w-6xl mx-auto w-full space-y-8 ${
+            activeView === "create" ? "" : "hidden"
+          }`}
+        >
           
           {/* TYPE SELECTOR TOGGLE */}
           <div className="flex justify-center">
@@ -983,6 +1060,13 @@ const [isUploading, setIsUploading] = useState(false);
                       <img src={generatedImage} alt="Generated Visual" className="w-full h-full object-cover" />
                     )}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsPublishOpen(true)}
+                    className="w-full py-2.5 rounded-lg bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:opacity-95 text-xs font-bold text-white flex items-center justify-center gap-2 transition"
+                  >
+                    <Send className="w-4 h-4" /> Publish to Social
+                  </button>
                   <a 
                     href={generatedImage} 
                     target="_blank" 
@@ -1084,6 +1168,14 @@ const [isUploading, setIsUploading] = useState(false);
 
         </div>
       </main>
+
+      {isPublishOpen && publishMedia && (
+        <PublishModal
+          onClose={() => setIsPublishOpen(false)}
+          media={publishMedia}
+          productName={productName}
+        />
+      )}
     </div>
   );
 }
