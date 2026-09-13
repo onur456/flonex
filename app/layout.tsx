@@ -13,18 +13,17 @@ const geistMono = Geist_Mono({
 });
 
 const facebookDomainVerification =
-  process.env.NEXT_PUBLIC_FACEBOOK_DOMAIN_VERIFICATION?.trim();
+  process.env.NEXT_PUBLIC_FACEBOOK_DOMAIN_VERIFICATION?.trim() ||
+  "32ru78yosi47s32w584z8q9rko6mlh";
 
 export const metadata: Metadata = {
   title: "Flonex",
   description: "Generate studio-quality media and publish in one click",
-  ...(facebookDomainVerification
-    ? {
-        other: {
-          "facebook-domain-verification": facebookDomainVerification,
-        },
-      }
-    : {}),
+  verification: {
+    other: {
+      "facebook-domain-verification": facebookDomainVerification,
+    },
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
