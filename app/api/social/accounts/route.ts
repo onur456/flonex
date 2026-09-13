@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSocialPlatform } from "@/lib/social";
 import {
-  connectSocialAccount,
   disconnectSocialAccount,
   listSocialAccounts,
   setAutoPublish,
@@ -46,9 +45,8 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Подключение аккаунта без OAuth. Осталось только для TikTok — заглушка до
- * подключения TikTok Login Kit. Instagram и Facebook идут через настоящий Meta
- * OAuth (`/api/social/oauth/meta/start`), иначе в базе не будет токена.
+ * Подключение без OAuth больше не поддерживается: у всех трёх платформ
+ * настоящий вход, иначе в `social_account_secrets` не будет токена.
  */
 export async function POST(request: NextRequest) {
   const auth = await getRequestAuth(request);
@@ -68,13 +66,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  try {
-    return NextResponse.json({
-      account: await connectSocialAccount(auth.client, auth.userId, platform),
-    });
-  } catch (error) {
-    return failed(error);
-  }
+  return NextResponse.json(
+    { error: "TikTok подключается через вход в Login Kit" },
+    { status: 400 }
+  );
 }
 
 /** Переключение режима авто-публикации у подключённого аккаунта. */

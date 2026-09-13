@@ -23,9 +23,8 @@ interface SocialAccountRow {
 }
 
 /**
- * Профиль, который вернул бы OAuth платформы. Instagram и Facebook подключаются
- * настоящим Meta OAuth, так что заглушка осталась только для TikTok — до
- * подключения TikTok Login Kit.
+ * Заглушка профиля без OAuth. Все три платформы теперь подключаются настоящим
+ * входом, эта функция оставлена только на случай ручного upsert.
  */
 const MOCK_USERNAMES: Record<SocialPlatform, string> = {
   instagram: "@flonex.studio",
@@ -175,10 +174,79 @@ export async function saveMetaConnection(
   return rows.map((row) => row.platform);
 }
 
+export interface TikTokConnection {
+  openId: string;
+  username: string | null;
+  avatarUrl: string | null;
+  accessToken: string;
+  refreshToken: string | null;
+}
+
+export async function saveTikTokConnection(
+  admin: SupabaseClient,
+  userId: string,
+  profile: TikTokConnection
+): Promise<void> {
+  const connectedAt = new Date().toISOString();
+
+  const { error } = await admin.from(TABLE).upsert(
+    {
+      user_id: userId,
+      platform: "tiktok",
+      username: profile.username,
+      avatar_url: profile.avatarUrl,
+      platform_account_id: profile.openId,
+      page_id: null,
+      connected_at: connectedAt,
+    },
+    { onConflict: "user_id,platform" }
+  );
+
+  if (error) {
+    throw new Error(formatSupabaseError(error));
+  }
+
+  const { error: secretsError } = await admin.from(SECRETS_TABLE).upsert(
+    {
+      user_id: userId,
+      platform: "tiktok",
+      access_token: profile.accessToken,
+      refresh_token: profile.refreshToken,
+      updated_at: connectedAt,
+    },
+    { onConflict: "user_id,platform" }
+  );
+
+  if (secretsError) {
+    throw new Error(formatSupabaseError(secretsError));
+  }
+}
+
+export async function updateTikTokTokens(
+  admin: SupabaseClient,
+  userId: string,
+  tokens: { accessToken: string; refreshToken: string | null }
+): Promise<void> {
+  const { error } = await admin
+    .from(SECRETS_TABLE)
+    .update({
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId)
+    .eq("platform", "tiktok");
+
+  if (error) {
+    throw new Error(formatSupabaseError(error));
+  }
+}
+
 export interface PublishTarget {
-  /** id объекта публикации: страница Facebook или аккаунт Instagram. */
+  /** id объекта публикации: страница Facebook, аккаунт Instagram или open_id TikTok. */
   accountId: string | null;
   accessToken: string | null;
+  refreshToken: string | null;
 }
 
 /**
@@ -194,7 +262,7 @@ export async function getPublishTargets(
       .from(TABLE)
       .select("platform, platform_account_id")
       .eq("user_id", userId),
-    admin.from(SECRETS_TABLE).select("platform, access_token").eq("user_id", userId),
+    admin.from(SECRETS_TABLE).select("platform, access_token, refresh_token").eq("user_id", userId),
   ]);
 
   if (accounts.error) {
@@ -205,8 +273,17 @@ export async function getPublishTargets(
     throw new Error(formatSupabaseError(secrets.error));
   }
 
-  const tokens = new Map<string, string>(
-    (secrets.data ?? []).map((row) => [row.platform as string, row.access_token as string])
+  const tokens = new Map<
+    string,
+    { accessToken: string; refreshToken: string | null }
+  >(
+    (secrets.data ?? []).map((row) => [
+      row.platform as string,
+      {
+        accessToken: row.access_token as string,
+        refreshToken: (row.refresh_token as string | null) ?? null,
+      },
+    ])
   );
 
   const targets = new Map<SocialPlatform, PublishTarget>();
@@ -215,9 +292,12 @@ export async function getPublishTargets(
     const platform = row.platform as unknown;
     if (!isSocialPlatform(platform)) continue;
 
+    const secret = tokens.get(platform);
+
     targets.set(platform, {
       accountId: (row.platform_account_id as string | null) ?? null,
-      accessToken: tokens.get(platform) ?? null,
+      accessToken: secret?.accessToken ?? null,
+      refreshToken: secret?.refreshToken ?? null,
     });
   }
 

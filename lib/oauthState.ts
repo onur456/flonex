@@ -22,12 +22,17 @@ interface StatePayload {
   n: string;
 }
 
-function sign(payload: string): string {
-  if (!metaClientSecret) {
-    throw new Error("META_CLIENT_SECRET нужен для подписи OAuth state");
+function signingSecret(): string {
+  const secret = metaClientSecret || process.env.TIKTOK_CLIENT_SECRET?.trim() || "";
+  if (!secret) {
+    throw new Error("Для подписи OAuth state нужен META_CLIENT_SECRET или TIKTOK_CLIENT_SECRET");
   }
 
-  return createHmac("sha256", `${SIGNING_KEY_LABEL}:${metaClientSecret}`)
+  return secret;
+}
+
+function sign(payload: string): string {
+  return createHmac("sha256", `${SIGNING_KEY_LABEL}:${signingSecret()}`)
     .update(payload)
     .digest("base64url");
 }

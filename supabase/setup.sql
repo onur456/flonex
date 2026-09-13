@@ -229,3 +229,8 @@ create table if not exists public.social_account_secrets (
 
 alter table public.social_account_secrets enable row level security;
 revoke all on public.social_account_secrets from anon, authenticated;
+
+-- TikTok access-токен истекает примерно через сутки, публикация без refresh
+-- невозможна. У Meta поле остаётся null.
+alter table public.social_account_secrets
+  add column if not exists refresh_token text;

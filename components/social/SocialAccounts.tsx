@@ -19,10 +19,10 @@ import {
   type SocialPlatform,
 } from "@/lib/social";
 import {
-  connectAccount,
   disconnectAccount,
   fetchAccounts,
   startMetaOAuth,
+  startTikTokOAuth,
   updateAutoPublish,
 } from "@/lib/socialClient";
 import { SocialAccountCard } from "./SocialAccountCard";
@@ -134,22 +134,28 @@ export function SocialAccounts({
     });
   };
 
+  const handleTikTokConnect = () => {
+    setPendingPlatform("tiktok");
+
+    startTransition(async () => {
+      try {
+        const { url } = await startTikTokOAuth();
+        window.location.assign(url);
+      } catch (err) {
+        console.error("TikTok OAuth start error:", err);
+        setError(err instanceof Error ? err.message : "Не удалось открыть вход в TikTok");
+        setPendingPlatform(null);
+      }
+    });
+  };
+
   const handleConnect = (platform: SocialPlatform) => {
     if (platform === "instagram" || platform === "facebook") {
       handleMetaConnect(platform);
       return;
     }
 
-    mutateAccount(
-      platform,
-      (account) => ({ ...account, status: "connected", username: "…" }),
-      async () => {
-        const { account } = await connectAccount(platform);
-        setAccounts((prev) =>
-          prev.map((item) => (item.platform === platform ? account : item))
-        );
-      }
-    );
+    handleTikTokConnect();
   };
 
   const handleDisconnect = (platform: SocialPlatform) => {
@@ -307,7 +313,8 @@ export function SocialAccounts({
             </p>
             <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
               Instagram подключается вместе со страницей Facebook одним входом в
-              Meta, поэтому аккаунт должен быть Professional и привязан к странице.
+              Meta. TikTok — отдельным входом через Login Kit. Пока приложение не
+              прошло App Review, посты в TikTok уходят только в приватный профиль.
             </p>
           </div>
         </>

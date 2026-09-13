@@ -14,9 +14,10 @@ import {
   type SocialMediaType,
   type SocialPlatform,
 } from "@/lib/social";
-import { getPublishTargets, type PublishTarget } from "@/lib/socialStore";
+import { getPublishTargets, updateTikTokTokens, type PublishTarget } from "@/lib/socialStore";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getRequestAuth } from "@/lib/supabaseRequest";
+import { publishToTikTok, refreshTikTokToken } from "@/lib/tiktok";
 
 export const runtime = "nodejs";
 
@@ -57,26 +58,12 @@ function rejected(platform: SocialPlatform, error: string): PublishTargetResult 
   return { platform, status: "failed", permalink: null, error };
 }
 
-/**
- * TikTok остаётся заглушкой: Content Posting API требует отдельного входа через
- * TikTok Login Kit, которого в проекте пока нет.
- */
-function publishToTikTokMock(
-  platform: SocialPlatform,
-  scheduledAt: Date | null
-): PublishTargetResult {
-  return {
-    platform,
-    status: scheduledAt ? "scheduled" : "published",
-    permalink: scheduledAt ? null : `https://example.com/tiktok/mock-${Date.now()}`,
-    error: null,
-  };
-}
-
 async function publishToPlatform(
   platform: SocialPlatform,
   target: PublishTarget | undefined,
-  input: Omit<PublishInput, "accountId" | "accessToken">
+  input: Omit<PublishInput, "accountId" | "accessToken">,
+  userId: string,
+  admin: NonNullable<ReturnType<typeof getSupabaseAdmin>>
 ): Promise<PublishTargetResult> {
   const meta = findSocialPlatform(platform);
 
@@ -93,20 +80,16 @@ async function publishToPlatform(
     return rejected(platform, `Подпись длиннее ${meta.captionLimit} символов`);
   }
 
-  if (platform === "tiktok") {
-    return publishToTikTokMock(platform, input.scheduledAt);
-  }
-
   if (!target.accountId || !target.accessToken) {
     return rejected(platform, `Переподключите ${meta.title}: нет токена доступа`);
   }
 
   const scheduledAt = input.scheduledAt;
 
-  if (platform === "instagram" && scheduledAt) {
+  if ((platform === "instagram" || platform === "tiktok") && scheduledAt) {
     return rejected(
       platform,
-      "Instagram API не умеет отложенную публикацию — выберите Publish Now"
+      `${meta.title} API не умеет отложенную публикацию — выберите Publish Now`
     );
   }
 
@@ -119,6 +102,47 @@ async function publishToPlatform(
 
     if (delay > FACEBOOK_SCHEDULE_MAX_MS) {
       return rejected(platform, "Facebook принимает дату не дальше чем на 30 дней вперёд");
+    }
+  }
+
+  if (platform === "tiktok") {
+    try {
+      let accessToken = target.accessToken;
+
+      // Access-токен TikTok живёт около суток — перед постом всегда пробуем refresh.
+      if (target.refreshToken) {
+        try {
+          const refreshed = await refreshTikTokToken(target.refreshToken);
+          accessToken = refreshed.accessToken;
+          await updateTikTokTokens(admin, userId, {
+            accessToken: refreshed.accessToken,
+            refreshToken: refreshed.refreshToken ?? target.refreshToken,
+          });
+        } catch (refreshError) {
+          console.error("[social/publish] tiktok refresh", refreshError);
+        }
+      }
+
+      const result = await publishToTikTok({
+        accessToken,
+        mediaUrl: input.mediaUrl,
+        mediaType: input.mediaType,
+        caption: input.caption,
+      });
+
+      return {
+        platform,
+        status: "published",
+        permalink: result.permalink,
+        error: null,
+      };
+    } catch (error) {
+      console.error("[social/publish] tiktok", error);
+
+      return rejected(
+        platform,
+        error instanceof Error ? error.message : "TikTok: неизвестная ошибка"
+      );
     }
   }
 
@@ -241,12 +265,18 @@ export async function POST(request: NextRequest) {
   // Платформы независимы, поэтому ошибка одной не должна отменять остальные.
   const results = await Promise.all(
     platforms.map((platform) =>
-      publishToPlatform(platform, targets.get(platform), {
-        mediaUrl,
-        mediaType,
-        caption,
-        scheduledAt,
-      })
+      publishToPlatform(
+        platform,
+        targets.get(platform),
+        {
+          mediaUrl,
+          mediaType,
+          caption,
+          scheduledAt,
+        },
+        auth.userId,
+        admin
+      )
     )
   );
 

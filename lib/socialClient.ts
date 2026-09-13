@@ -55,20 +55,16 @@ export function fetchAccounts(): Promise<{ accounts: SocialAccount[] }> {
   return request("/api/social/accounts");
 }
 
-/** Только TikTok: Instagram и Facebook подключаются через `startMetaOAuth`. */
-export function connectAccount(platform: SocialPlatform): Promise<{ account: SocialAccount }> {
-  return request("/api/social/accounts", {
-    method: "POST",
-    body: JSON.stringify({ platform }),
-  });
-}
-
 /**
- * Ссылка на диалог входа Meta. Её нужно получить запросом с токеном: сервер
- * зашивает id пользователя в подписанный `state`, чтобы узнать его на callback.
+ * Ссылка на диалог входа. Id пользователя едет в подписанном `state`, потому
+ * что callback приходит обычным редиректом без заголовка Authorization.
  */
 export function startMetaOAuth(): Promise<{ url: string; redirectUri: string }> {
   return request("/api/social/oauth/meta/start", { method: "POST" });
+}
+
+export function startTikTokOAuth(): Promise<{ url: string; redirectUri: string }> {
+  return request("/api/social/oauth/tiktok/start", { method: "POST" });
 }
 
 export function updateAutoPublish(
