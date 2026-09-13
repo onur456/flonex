@@ -24,5 +24,5 @@ export function getAppOrigin(request: Request): string {
   const proto = request.headers.get("x-forwarded-proto") || "http";
   if (host) return `${proto}://${host}`;
 
-  return process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 }
