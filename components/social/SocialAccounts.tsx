@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { AlertTriangle, Loader2, LogIn, RefreshCw, Send, Share2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  LogIn,
+  RefreshCw,
+  Send,
+  Share2,
+} from "lucide-react";
 import Link from "next/link";
 import {
   SOCIAL_PLATFORMS,
@@ -14,13 +22,21 @@ import {
   connectAccount,
   disconnectAccount,
   fetchAccounts,
+  startMetaOAuth,
   updateAutoPublish,
 } from "@/lib/socialClient";
 import { SocialAccountCard } from "./SocialAccountCard";
 
+export interface SocialNotice {
+  kind: "success" | "error";
+  text: string;
+}
+
 interface SocialAccountsProps {
   /** Без входа запросы к `/api/social/*` вернут 401, поэтому показываем приглашение. */
   isSignedIn: boolean;
+  /** Результат возврата из OAuth-диалога платформы. */
+  notice?: SocialNotice | null;
   /** Открыть модалку публикации для текущей генерации. */
   onPublishRequest?: () => void;
   /** Есть ли готовая генерация, которую можно опубликовать. */
@@ -33,6 +49,7 @@ function emptyAccounts(): SocialAccount[] {
 
 export function SocialAccounts({
   isSignedIn,
+  notice = null,
   onPublishRequest,
   canPublish = false,
 }: SocialAccountsProps) {
@@ -97,7 +114,32 @@ export function SocialAccounts({
     });
   };
 
+  /**
+   * Instagram и Facebook подключаются одним входом в Meta, поэтому здесь мы
+   * уводим пользователя на диалог Meta и ждём возврата на callback. Оптимистично
+   * обновлять карточку нельзя: подключение завершится уже после перезагрузки.
+   */
+  const handleMetaConnect = (platform: SocialPlatform) => {
+    setPendingPlatform(platform);
+
+    startTransition(async () => {
+      try {
+        const { url } = await startMetaOAuth();
+        window.location.assign(url);
+      } catch (err) {
+        console.error("Meta OAuth start error:", err);
+        setError(err instanceof Error ? err.message : "Не удалось открыть вход в Meta");
+        setPendingPlatform(null);
+      }
+    });
+  };
+
   const handleConnect = (platform: SocialPlatform) => {
+    if (platform === "instagram" || platform === "facebook") {
+      handleMetaConnect(platform);
+      return;
+    }
+
     mutateAccount(
       platform,
       (account) => ({ ...account, status: "connected", username: "…" }),
@@ -197,6 +239,29 @@ export function SocialAccounts({
         </div>
       ) : (
         <>
+          {notice && (
+            <div
+              className={`flex items-start gap-2.5 rounded-xl border p-3.5 ${
+                notice.kind === "success"
+                  ? "border-emerald-500/30 bg-emerald-500/10"
+                  : "border-amber-500/30 bg-amber-500/10"
+              }`}
+            >
+              {notice.kind === "success" ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+              )}
+              <p
+                className={`text-xs break-words ${
+                  notice.kind === "success" ? "text-emerald-200" : "text-amber-200"
+                }`}
+              >
+                {notice.text}
+              </p>
+            </div>
+          )}
+
           {error && (
             <div className="flex items-start gap-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5">
               <AlertTriangle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
@@ -239,6 +304,10 @@ export function SocialAccounts({
               {autoPublishNames.length > 0
                 ? `Авто-публикация включена: ${autoPublishNames.join(", ")}. Новые генерации будут уходить в эти аккаунты автоматически.`
                 : "Авто-публикация выключена — каждую генерацию нужно отправлять вручную через Publish."}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+              Instagram подключается вместе со страницей Facebook одним входом в
+              Meta, поэтому аккаунт должен быть Professional и привязан к странице.
             </p>
           </div>
         </>

@@ -1,5 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
+  FACEBOOK_SCHEDULE_MAX_MS,
+  FACEBOOK_SCHEDULE_MIN_MS,
+  publishToFacebookPage,
+  publishToInstagram,
+  type PublishInput,
+} from "@/lib/meta";
+import {
   acceptsMediaType,
   findSocialPlatform,
   isSocialPlatform,
@@ -7,13 +14,14 @@ import {
   type SocialMediaType,
   type SocialPlatform,
 } from "@/lib/social";
-import { listSocialAccounts } from "@/lib/socialStore";
+import { getPublishTargets, type PublishTarget } from "@/lib/socialStore";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getRequestAuth } from "@/lib/supabaseRequest";
 
 export const runtime = "nodejs";
 
-/** Сколько «думает» заглушка, чтобы в UI успел показаться спиннер. */
-const MOCK_LATENCY_MS = 700;
+/** Instagram обрабатывает видео асинхронно, и ответа приходится ждать. */
+export const maxDuration = 60;
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
@@ -45,10 +53,104 @@ function isHttpUrl(value: unknown): value is string {
   }
 }
 
+function rejected(platform: SocialPlatform, error: string): PublishTargetResult {
+  return { platform, status: "failed", permalink: null, error };
+}
+
 /**
- * Заглушка публикации. Реальная реализация должна складывать задание в очередь
- * (Instagram Graph API и TikTok Content Posting API работают асинхронно) и
- * отдавать клиенту id задания, а не готовый permalink.
+ * TikTok остаётся заглушкой: Content Posting API требует отдельного входа через
+ * TikTok Login Kit, которого в проекте пока нет.
+ */
+function publishToTikTokMock(
+  platform: SocialPlatform,
+  scheduledAt: Date | null
+): PublishTargetResult {
+  return {
+    platform,
+    status: scheduledAt ? "scheduled" : "published",
+    permalink: scheduledAt ? null : `https://example.com/tiktok/mock-${Date.now()}`,
+    error: null,
+  };
+}
+
+async function publishToPlatform(
+  platform: SocialPlatform,
+  target: PublishTarget | undefined,
+  input: Omit<PublishInput, "accountId" | "accessToken">
+): Promise<PublishTargetResult> {
+  const meta = findSocialPlatform(platform);
+
+  if (!target) {
+    return rejected(platform, `${meta.title} не подключён`);
+  }
+
+  if (!acceptsMediaType(platform, input.mediaType)) {
+    const kind = input.mediaType === "video" ? "видео" : "фото";
+    return rejected(platform, `${meta.title} не принимает ${kind}`);
+  }
+
+  if (input.caption.length > meta.captionLimit) {
+    return rejected(platform, `Подпись длиннее ${meta.captionLimit} символов`);
+  }
+
+  if (platform === "tiktok") {
+    return publishToTikTokMock(platform, input.scheduledAt);
+  }
+
+  if (!target.accountId || !target.accessToken) {
+    return rejected(platform, `Переподключите ${meta.title}: нет токена доступа`);
+  }
+
+  const scheduledAt = input.scheduledAt;
+
+  if (platform === "instagram" && scheduledAt) {
+    return rejected(
+      platform,
+      "Instagram API не умеет отложенную публикацию — выберите Publish Now"
+    );
+  }
+
+  if (platform === "facebook" && scheduledAt) {
+    const delay = scheduledAt.getTime() - Date.now();
+
+    if (delay < FACEBOOK_SCHEDULE_MIN_MS) {
+      return rejected(platform, "Facebook публикует отложенно не раньше чем через 10 минут");
+    }
+
+    if (delay > FACEBOOK_SCHEDULE_MAX_MS) {
+      return rejected(platform, "Facebook принимает дату не дальше чем на 30 дней вперёд");
+    }
+  }
+
+  const publish = platform === "instagram" ? publishToInstagram : publishToFacebookPage;
+
+  try {
+    const result = await publish({
+      ...input,
+      accountId: target.accountId,
+      accessToken: target.accessToken,
+    });
+
+    return {
+      platform,
+      status: scheduledAt ? "scheduled" : "published",
+      permalink: result.permalink,
+      error: null,
+    };
+  } catch (error) {
+    console.error(`[social/publish] ${platform}`, error);
+
+    return rejected(
+      platform,
+      error instanceof Error ? error.message : `${meta.title}: неизвестная ошибка`
+    );
+  }
+}
+
+/**
+ * Публикует генерацию в выбранные платформы. Личность подтверждаем токеном
+ * пользователя, а токены платформ читаем service-role-клиентом — они лежат в
+ * таблице, закрытой от самого пользователя.
  */
 export async function POST(request: NextRequest) {
   const auth = await getRequestAuth(request);
@@ -89,7 +191,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let scheduledAt: string | null = null;
+  let scheduledAt: Date | null = null;
   if (scheduledAtRaw !== null && scheduledAtRaw !== undefined) {
     if (typeof scheduledAtRaw !== "string") {
       return NextResponse.json(
@@ -113,12 +215,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    scheduledAt = parsed.toISOString();
+    scheduledAt = parsed;
   }
 
-  let accounts;
+  const admin = getSupabaseAdmin();
+
+  if (!admin) {
+    return NextResponse.json(
+      { error: "На сервере нет SUPABASE_SERVICE_ROLE_KEY" },
+      { status: 500 }
+    );
+  }
+
+  let targets: Map<SocialPlatform, PublishTarget>;
   try {
-    accounts = await listSocialAccounts(auth.client, auth.userId);
+    targets = await getPublishTargets(admin, auth.userId);
   } catch (error) {
     console.error("[social/publish]", error);
     return NextResponse.json(
@@ -127,48 +238,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
-
-  const results: PublishTargetResult[] = platforms.map((platform) => {
-    const meta = findSocialPlatform(platform);
-    const account = accounts.find((item) => item.platform === platform);
-
-    if (!account || account.status !== "connected") {
-      return {
-        platform,
-        status: "failed",
-        permalink: null,
-        error: `${meta.title} не подключён`,
-      };
-    }
-
-    if (!acceptsMediaType(platform, mediaType)) {
-      return {
-        platform,
-        status: "failed",
-        permalink: null,
-        error: `${meta.title} не принимает ${mediaType === "video" ? "видео" : "фото"}`,
-      };
-    }
-
-    if (caption.length > meta.captionLimit) {
-      return {
-        platform,
-        status: "failed",
-        permalink: null,
-        error: `Подпись длиннее ${meta.captionLimit} символов`,
-      };
-    }
-
-    return {
-      platform,
-      status: scheduledAt ? "scheduled" : "published",
-      permalink: scheduledAt
-        ? null
-        : `https://example.com/${platform}/mock-${Date.now()}`,
-      error: null,
-    };
-  });
+  // Платформы независимы, поэтому ошибка одной не должна отменять остальные.
+  const results = await Promise.all(
+    platforms.map((platform) =>
+      publishToPlatform(platform, targets.get(platform), {
+        mediaUrl,
+        mediaType,
+        caption,
+        scheduledAt,
+      })
+    )
+  );
 
   return NextResponse.json({
     success: results.some((result) => result.status !== "failed"),

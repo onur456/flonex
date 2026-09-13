@@ -27,7 +27,8 @@ import {
   Send
 } from "lucide-react";
 import { PublishModal, type PublishMedia } from "@/components/social/PublishModal";
-import { SocialAccounts } from "@/components/social/SocialAccounts";
+import { SocialAccounts, type SocialNotice } from "@/components/social/SocialAccounts";
+import { findSocialPlatform, isSocialPlatform } from "@/lib/social";
 import { uploadProductImage } from "@/lib/uploadImage";
 import { formatSupabaseError, isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
@@ -117,6 +118,54 @@ const [isUploading, setIsUploading] = useState(false);
 
   // Публикация в соцсети
   const [isPublishOpen, setIsPublishOpen] = useState(false);
+  const [socialNotice, setSocialNotice] = useState<SocialNotice | null>(null);
+
+  /**
+   * Из OAuth-диалога Meta пользователь возвращается редиректом на «/», а
+   * результат подключения лежит в query. Читаем его после монтирования:
+   * `useSearchParams` потребовал бы обернуть страницу в Suspense (иначе сборка
+   * падает на пререндере), а `window` на сервере недоступен.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const social = params.get("social");
+
+    if (!social) return;
+
+    if (params.get("view") === "social") {
+      setActiveView("social");
+    }
+
+    const message = params.get("message");
+
+    if (social === "connected") {
+      const connected = (params.get("accounts") ?? "")
+        .split(",")
+        .filter(isSocialPlatform)
+        .map((platform) => findSocialPlatform(platform).title);
+      const page = params.get("page");
+
+      setSocialNotice({
+        kind: "success",
+        text: [
+          connected.length > 0
+            ? `Подключено: ${connected.join(", ")}${page ? ` — страница «${page}»` : ""}`
+            : "Подключение выполнено",
+          message,
+        ]
+          .filter(Boolean)
+          .join(". "),
+      });
+    } else {
+      setSocialNotice({
+        kind: "error",
+        text: message || "Не удалось подключить аккаунт",
+      });
+    }
+
+    // Чистим адрес, чтобы уведомление не всплывало снова при перезагрузке.
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
 
   // История генераций
   const [history, setHistory] = useState<GenerationItem[]>([]);
@@ -670,6 +719,7 @@ const [isUploading, setIsUploading] = useState(false);
           <div className="p-8 max-w-6xl mx-auto w-full">
             <SocialAccounts
               isSignedIn={Boolean(user)}
+              notice={socialNotice}
               canPublish={Boolean(publishMedia)}
               onPublishRequest={() => setIsPublishOpen(true)}
             />

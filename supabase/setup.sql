@@ -167,9 +167,8 @@ grant execute on function public.spend_credits(integer) to authenticated;
 
 -- Connected social accounts for auto-publishing.
 -- Строка существует только у подключённого аккаунта: отключение — это delete.
--- Внимание: когда появится реальный OAuth, access/refresh-токены платформ нельзя
--- держать здесь — пользователь читает эту таблицу. Для них нужна отдельная
--- таблица, доступная только service_role.
+-- Токены платформ здесь держать нельзя — пользователь читает эту таблицу.
+-- Они лежат в public.social_account_secrets ниже.
 create table if not exists public.social_accounts (
   user_id uuid not null references auth.users(id) on delete cascade,
   platform text not null,
@@ -204,3 +203,29 @@ drop policy if exists "Users can disconnect own social accounts" on public.socia
 create policy "Users can disconnect own social accounts"
   on public.social_accounts for delete
   using (auth.uid() = user_id);
+
+-- Объект, в который публикуем: id страницы для facebook, id профессионального
+-- аккаунта Instagram для instagram. У tiktok (пока заглушка) остаётся null.
+alter table public.social_accounts
+  add column if not exists platform_account_id text;
+
+-- Instagram публикуется токеном связанной страницы Facebook, поэтому её id
+-- нужен отдельно — по нему видно, через какую страницу идёт постинг.
+alter table public.social_accounts
+  add column if not exists page_id text;
+
+-- Access-токены платформ. RLS включён, и политик намеренно нет ни одной:
+-- anon и authenticated не получат ни одной строки, читает только service_role,
+-- который RLS обходит. Отключение аккаунта удаляет токен каскадом.
+create table if not exists public.social_account_secrets (
+  user_id uuid not null,
+  platform text not null,
+  access_token text not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, platform),
+  foreign key (user_id, platform)
+    references public.social_accounts(user_id, platform) on delete cascade
+);
+
+alter table public.social_account_secrets enable row level security;
+revoke all on public.social_account_secrets from anon, authenticated;

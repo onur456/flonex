@@ -46,10 +46,9 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Подключение аккаунта. Пока это заглушка вместо OAuth: реальная версия должна
- * уводить пользователя на authorize-страницу платформы и обменивать `code` на
- * токен в серверном callback, для чего сессию придётся перевести на cookie
- * (`@supabase/ssr`) — иначе сервер не узнает пользователя при возврате.
+ * Подключение аккаунта без OAuth. Осталось только для TikTok — заглушка до
+ * подключения TikTok Login Kit. Instagram и Facebook идут через настоящий Meta
+ * OAuth (`/api/social/oauth/meta/start`), иначе в базе не будет токена.
  */
 export async function POST(request: NextRequest) {
   const auth = await getRequestAuth(request);
@@ -60,6 +59,13 @@ export async function POST(request: NextRequest) {
 
   if (!isSocialPlatform(platform)) {
     return NextResponse.json({ error: "Неизвестная платформа" }, { status: 400 });
+  }
+
+  if (platform === "instagram" || platform === "facebook") {
+    return NextResponse.json(
+      { error: "Instagram и Facebook подключаются через вход в Meta" },
+      { status: 400 }
+    );
   }
 
   try {

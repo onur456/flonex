@@ -343,8 +343,13 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {(
                 [
-                  { mode: "now", title: "Publish Now", hint: "Уйдёт в очередь сразу" },
-                  { mode: "later", title: "Schedule for Later", hint: "Выберите дату и время" },
+                  { mode: "now", title: "Publish Now", hint: "Публикуем прямо сейчас" },
+                  {
+                    mode: "later",
+                    title: "Schedule for Later",
+                    // Instagram Graph API отложенную публикацию не поддерживает.
+                    hint: "Только Facebook, от 10 минут до 30 дней",
+                  },
                 ] as const
               ).map((option) => (
                 <label
