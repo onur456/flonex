@@ -16,12 +16,18 @@ const facebookDomainVerification =
   process.env.NEXT_PUBLIC_FACEBOOK_DOMAIN_VERIFICATION?.trim() ||
   "32ru78yosi47s32w584z8q9rko6mlh";
 
+const tiktokVerification =
+  process.env.NEXT_PUBLIC_TIKTOK_VERIFICATION_CODE?.trim();
+
 export const metadata: Metadata = {
   title: "Flonex",
   description: "Generate studio-quality media and publish in one click",
   verification: {
     other: {
       "facebook-domain-verification": facebookDomainVerification,
+      ...(tiktokVerification
+        ? { "tiktok-developers-site-verification": tiktokVerification }
+        : {}),
     },
   },
 };
