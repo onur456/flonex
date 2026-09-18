@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
   ExternalLink,
+  ImageOff,
   Loader2,
   Send,
   Sparkles,
@@ -22,6 +23,10 @@ import {
   type SocialPlatform,
 } from "@/lib/social";
 import { enhanceCaption, fetchAccounts, publishAsset } from "@/lib/socialClient";
+import {
+  fetchGenerationAssets,
+  type GenerationAsset,
+} from "@/lib/generations";
 import { PlatformIcon, PlatformTile } from "./PlatformIcon";
 
 export interface PublishMedia {
@@ -31,14 +36,15 @@ export interface PublishMedia {
 
 interface PublishModalProps {
   onClose: () => void;
-  media: PublishMedia;
-  /** Подставляется в подпись, когда пользователь просит AI-вариант. */
+  /** Текущая генерация из студии — попадает в сетку первой, если есть URL. */
+  initialMedia?: PublishMedia | null;
+  /** Карточка площадки: эта платформа уже выбрана. */
+  lockedPlatform?: SocialPlatform | null;
   productName?: string;
 }
 
 type ScheduleMode = "now" | "later";
 
-/** Дата и время по умолчанию для отложенной публикации — через час. */
 function defaultSchedule() {
   const target = new Date(Date.now() + 60 * 60 * 1000);
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -49,16 +55,27 @@ function defaultSchedule() {
   };
 }
 
-/**
- * Модалка монтируется только на время публикации, поэтому состояние не нужно
- * сбрасывать эффектами — достаточно начальных значений.
- */
-export function PublishModal({ onClose, media, productName }: PublishModalProps) {
+function isUsableMedia(media: PublishMedia | null | undefined): media is PublishMedia {
+  return Boolean(media?.url && (media.type === "image" || media.type === "video"));
+}
+
+export function PublishModal({
+  onClose,
+  initialMedia = null,
+  lockedPlatform = null,
+  productName,
+}: PublishModalProps) {
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [assets, setAssets] = useState<GenerationAsset[]>([]);
+  const [isLoadingAssets, setIsLoadingAssets] = useState(true);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
+  const [selectedMedia, setSelectedMedia] = useState<PublishMedia | null>(
+    isUsableMedia(initialMedia) ? initialMedia : null
+  );
   const [caption, setCaption] = useState("");
-  /** `null` — пользователь ещё не трогал выбор, показываем платформы по умолчанию. */
-  const [selection, setSelection] = useState<SocialPlatform[] | null>(null);
+  const [selection, setSelection] = useState<SocialPlatform[] | null>(
+    lockedPlatform ? [lockedPlatform] : null
+  );
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("now");
   const [schedule, setSchedule] = useState(defaultSchedule);
   const [isEnhancing, setIsEnhancing] = useState(false);
@@ -83,6 +100,26 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
         if (!cancelled) setIsLoadingAccounts(false);
       });
 
+    fetchGenerationAssets()
+      .then((loaded) => {
+        if (cancelled) return;
+        setAssets(loaded);
+
+        setSelectedMedia((current) => {
+          if (isUsableMedia(current)) return current;
+          const first = loaded[0];
+          return first ? { url: first.url, type: first.type } : null;
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("Generations fetch error:", err);
+        setError(err instanceof Error ? err.message : "Не удалось загрузить генерации");
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingAssets(false);
+      });
+
     return () => {
       cancelled = true;
     };
@@ -99,6 +136,29 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isPublishing, onClose]);
 
+  const pickerItems = useMemo(() => {
+    const items = [...assets];
+
+    if (
+      isUsableMedia(initialMedia) &&
+      !items.some((item) => item.url === initialMedia.url)
+    ) {
+      items.unshift({
+        id: "latest",
+        url: initialMedia.url,
+        type: initialMedia.type,
+        productName: productName ?? "Latest generation",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    if (!lockedPlatform) return items;
+
+    return items.filter((item) => acceptsMediaType(lockedPlatform, item.type));
+  }, [assets, initialMedia, lockedPlatform, productName]);
+
+  const media = isUsableMedia(selectedMedia) ? selectedMedia : null;
+
   const isConnected = useCallback(
     (platform: SocialPlatform) =>
       accounts.some(
@@ -109,13 +169,15 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
 
   const isAvailable = useCallback(
     (platform: SocialPlatform) =>
-      isConnected(platform) && acceptsMediaType(platform, media.type),
-    [isConnected, media.type]
+      isConnected(platform) && (!media || acceptsMediaType(platform, media.type)),
+    [isConnected, media]
   );
 
-  /** По умолчанию выбраны все аккаунты, готовые принять этот тип медиа. */
   const selected =
-    selection ?? SOCIAL_PLATFORMS.map((platform) => platform.id).filter(isAvailable);
+    selection ??
+    SOCIAL_PLATFORMS.map((platform) => platform.id).filter((platform) =>
+      lockedPlatform ? platform === lockedPlatform && isAvailable(platform) : isAvailable(platform)
+    );
 
   const togglePlatform = (platform: SocialPlatform) => {
     setSelection(
@@ -125,7 +187,6 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
     );
   };
 
-  /** Самый строгий лимит среди выбранных платформ. */
   const captionLimit = selected.length
     ? Math.min(...selected.map((platform) => findSocialPlatform(platform).captionLimit))
     : Math.max(...SOCIAL_PLATFORMS.map((platform) => platform.captionLimit));
@@ -146,9 +207,14 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
   };
 
   const handlePublish = async () => {
+    if (!media?.url || !media.type) {
+      setError("Выберите фото или видео для публикации");
+      return;
+    }
+
     let scheduledAt: string | null = null;
 
-    if (scheduleMode === "later") {
+    if (scheduleMode === "later" && selected.includes("facebook")) {
       const parsed = new Date(`${schedule.date}T${schedule.time}`);
 
       if (Number.isNaN(parsed.getTime())) {
@@ -186,7 +252,13 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
     }
   };
 
-  const canSubmit = selected.length > 0 && !isCaptionTooLong && !isPublishing;
+  const canSubmit =
+    Boolean(media?.url && media.type) &&
+    selected.length > 0 &&
+    !isCaptionTooLong &&
+    !isPublishing;
+
+  const lockedTitle = lockedPlatform ? findSocialPlatform(lockedPlatform).title : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -209,7 +281,9 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
               Publish to Social
             </h2>
             <p className="text-xs text-slate-400">
-              {media.type === "video" ? "Kling AI video" : "AI photo"} · выберите площадки и время
+              {lockedTitle
+                ? `${lockedTitle} · выберите генерацию и подпись`
+                : "Выберите генерацию, площадки и подпись"}
             </p>
           </div>
           <button
@@ -223,27 +297,97 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
         </header>
 
         <div className="p-6 space-y-6">
-          {/* CONTENT PREVIEW + CAPTION */}
+          <section className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs text-slate-400 font-medium">Generated media</h3>
+              {media?.type && (
+                <span className="text-[10px] font-medium text-indigo-300 uppercase tracking-wide">
+                  {media.type === "video" ? "Kling AI video" : "AI photo"}
+                </span>
+              )}
+            </div>
+
+            {isLoadingAssets ? (
+              <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-800 bg-slate-950/40 py-10 text-xs text-slate-400">
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                Загружаем генерации...
+              </div>
+            ) : pickerItems.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-800 bg-slate-950/40 py-10 text-center">
+                <ImageOff className="w-6 h-6 text-slate-600" />
+                <p className="text-xs text-slate-400">Нет сохранённых генераций</p>
+                <p className="text-[11px] text-slate-500">
+                  Сначала создайте фото или видео в Content Studio
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                {pickerItems.map((item) => {
+                  const isSelected = media?.url === item.url;
+
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setSelectedMedia({ url: item.url, type: item.type })}
+                      disabled={isPublishing}
+                      className={`relative aspect-square rounded-xl overflow-hidden border bg-slate-950 transition ${
+                        isSelected
+                          ? "border-indigo-500 ring-2 ring-indigo-500/30"
+                          : "border-slate-800 hover:border-slate-600"
+                      } disabled:opacity-60`}
+                    >
+                      {item.type === "video" ? (
+                        <video
+                          src={item.url}
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={item.url}
+                          alt={item.productName || "Generated asset"}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                      {isSelected && (
+                        <span className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-indigo-500 text-white flex items-center justify-center shadow">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        </span>
+                      )}
+                      <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 to-transparent px-1.5 py-1 text-[9px] text-slate-300 truncate">
+                        {item.type === "video" ? "Video" : "Photo"}
+                        {item.productName ? ` · ${item.productName}` : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           <div className="grid grid-cols-1 sm:grid-cols-5 gap-5">
             <div className="sm:col-span-2 rounded-xl overflow-hidden border border-slate-800 bg-slate-950 h-48 sm:h-full min-h-[12rem]">
-              {media.type === "video" ? (
+              {media?.url && media.type === "video" ? (
                 <video
                   src={media.url}
                   controls
                   playsInline
                   className="w-full h-full object-contain bg-black"
                 />
-              ) : (
+              ) : media?.url ? (
                 <img src={media.url} alt="Asset preview" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[11px] text-slate-500">
+                  Выберите файл слева
+                </div>
               )}
             </div>
 
             <div className="sm:col-span-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <label
-                  htmlFor="publish-caption"
-                  className="text-xs text-slate-400 font-medium"
-                >
+                <label htmlFor="publish-caption" className="text-xs text-slate-400 font-medium">
                   Caption & hashtags
                 </label>
                 <button
@@ -257,7 +401,7 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
                   ) : (
                     <Sparkles className="w-3 h-3" />
                   )}
-                  AI Enhance Caption
+                  AI Generate Caption
                 </button>
               </div>
 
@@ -267,7 +411,7 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
                 value={caption}
                 onChange={(event) => setCaption(event.target.value)}
                 disabled={isPublishing}
-                placeholder="Расскажите о товаре и добавьте хэштеги, или нажмите AI Enhance Caption..."
+                placeholder="Расскажите о товаре и добавьте хэштеги, или нажмите AI Generate Caption..."
                 className="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/80 transition resize-none disabled:opacity-60"
               />
 
@@ -281,7 +425,6 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
             </div>
           </div>
 
-          {/* PLATFORM SELECTOR */}
           <fieldset className="space-y-2">
             <legend className="text-xs text-slate-400 font-medium mb-2">Platforms</legend>
 
@@ -296,7 +439,7 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
                   const checked = selected.includes(platform.id);
                   const reason = !isConnected(platform.id)
                     ? "Не подключён"
-                    : !acceptsMediaType(platform.id, media.type)
+                    : media && !acceptsMediaType(platform.id, media.type)
                       ? media.type === "video"
                         ? "Не принимает видео"
                         : "Только видео"
@@ -336,88 +479,88 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
             )}
           </fieldset>
 
-          {/* SCHEDULE */}
-          <fieldset className="space-y-2.5">
-            <legend className="text-xs text-slate-400 font-medium mb-2">Schedule</legend>
+          {selected.includes("facebook") && (
+            <fieldset className="space-y-2.5">
+              <legend className="text-xs text-slate-400 font-medium mb-2">Schedule</legend>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {(
-                [
-                  { mode: "now", title: "Publish Now", hint: "Публикуем прямо сейчас" },
-                  {
-                    mode: "later",
-                    title: "Schedule for Later",
-                    // Instagram Graph API отложенную публикацию не поддерживает.
-                    hint: "Только Facebook, от 10 минут до 30 дней",
-                  },
-                ] as const
-              ).map((option) => (
-                <label
-                  key={option.mode}
-                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${
-                    scheduleMode === option.mode
-                      ? "border-indigo-500/60 bg-indigo-600/15"
-                      : "border-slate-800 bg-slate-950/60 hover:border-slate-700"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="publish-schedule"
-                    value={option.mode}
-                    checked={scheduleMode === option.mode}
-                    disabled={isPublishing}
-                    onChange={() => setScheduleMode(option.mode)}
-                    className="h-3.5 w-3.5 accent-indigo-500"
-                  />
-                  <div>
-                    <p className="text-xs font-semibold text-slate-200">{option.title}</p>
-                    <p className="text-[10px] text-slate-500">{option.hint}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-
-            {scheduleMode === "later" && (
-              <div className="grid grid-cols-2 gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {(
+                  [
+                    { mode: "now", title: "Publish Now", hint: "Публикуем прямо сейчас" },
+                    {
+                      mode: "later",
+                      title: "Schedule for Later",
+                      hint: "Только Facebook, от 10 минут до 30 дней",
+                    },
+                  ] as const
+                ).map((option) => (
                   <label
-                    htmlFor="publish-date"
-                    className="text-[10px] text-slate-400 font-medium block mb-1"
+                    key={option.mode}
+                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                      scheduleMode === option.mode
+                        ? "border-indigo-500/60 bg-indigo-600/15"
+                        : "border-slate-800 bg-slate-950/60 hover:border-slate-700"
+                    }`}
                   >
-                    Date
+                    <input
+                      type="radio"
+                      name="publish-schedule"
+                      value={option.mode}
+                      checked={scheduleMode === option.mode}
+                      disabled={isPublishing}
+                      onChange={() => setScheduleMode(option.mode)}
+                      className="h-3.5 w-3.5 accent-indigo-500"
+                    />
+                    <div>
+                      <p className="text-xs font-semibold text-slate-200">{option.title}</p>
+                      <p className="text-[10px] text-slate-500">{option.hint}</p>
+                    </div>
                   </label>
-                  <input
-                    id="publish-date"
-                    type="date"
-                    value={schedule.date}
-                    disabled={isPublishing}
-                    onChange={(event) =>
-                      setSchedule((prev) => ({ ...prev, date: event.target.value }))
-                    }
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500/80 transition"
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="publish-time"
-                    className="text-[10px] text-slate-400 font-medium block mb-1"
-                  >
-                    Time
-                  </label>
-                  <input
-                    id="publish-time"
-                    type="time"
-                    value={schedule.time}
-                    disabled={isPublishing}
-                    onChange={(event) =>
-                      setSchedule((prev) => ({ ...prev, time: event.target.value }))
-                    }
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500/80 transition"
-                  />
-                </div>
+                ))}
               </div>
-            )}
-          </fieldset>
+
+              {scheduleMode === "later" && (
+                <div className="grid grid-cols-2 gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div>
+                    <label
+                      htmlFor="publish-date"
+                      className="text-[10px] text-slate-400 font-medium block mb-1"
+                    >
+                      Date
+                    </label>
+                    <input
+                      id="publish-date"
+                      type="date"
+                      value={schedule.date}
+                      disabled={isPublishing}
+                      onChange={(event) =>
+                        setSchedule((prev) => ({ ...prev, date: event.target.value }))
+                      }
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500/80 transition"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="publish-time"
+                      className="text-[10px] text-slate-400 font-medium block mb-1"
+                    >
+                      Time
+                    </label>
+                    <input
+                      id="publish-time"
+                      type="time"
+                      value={schedule.time}
+                      disabled={isPublishing}
+                      onChange={(event) =>
+                        setSchedule((prev) => ({ ...prev, time: event.target.value }))
+                      }
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500/80 transition"
+                    />
+                  </div>
+                </div>
+              )}
+            </fieldset>
+          )}
 
           {error && (
             <div className="flex items-start gap-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5">
@@ -500,7 +643,7 @@ export function PublishModal({ onClose, media, productName }: PublishModalProps)
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   Отправляем...
                 </>
-              ) : scheduleMode === "later" ? (
+              ) : scheduleMode === "later" && selected.includes("facebook") ? (
                 <>
                   <CalendarClock className="w-3.5 h-3.5" />
                   Schedule

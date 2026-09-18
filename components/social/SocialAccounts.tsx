@@ -14,7 +14,6 @@ import Link from "next/link";
 import {
   SOCIAL_PLATFORMS,
   disconnectedAccount,
-  findSocialPlatform,
   type SocialAccount,
   type SocialPlatform,
 } from "@/lib/social";
@@ -23,7 +22,6 @@ import {
   fetchAccounts,
   startMetaOAuth,
   startTikTokOAuth,
-  updateAutoPublish,
 } from "@/lib/socialClient";
 import { SocialAccountCard } from "./SocialAccountCard";
 
@@ -33,14 +31,10 @@ export interface SocialNotice {
 }
 
 interface SocialAccountsProps {
-  /** Без входа запросы к `/api/social/*` вернут 401, поэтому показываем приглашение. */
   isSignedIn: boolean;
-  /** Результат возврата из OAuth-диалога платформы. */
   notice?: SocialNotice | null;
-  /** Открыть модалку публикации для текущей генерации. */
-  onPublishRequest?: () => void;
-  /** Есть ли готовая генерация, которую можно опубликовать. */
-  canPublish?: boolean;
+  /** `platform` задан, когда публикация стартовала с карточки площадки. */
+  onPublishRequest: (platform?: SocialPlatform) => void;
 }
 
 function emptyAccounts(): SocialAccount[] {
@@ -51,7 +45,6 @@ export function SocialAccounts({
   isSignedIn,
   notice = null,
   onPublishRequest,
-  canPublish = false,
 }: SocialAccountsProps) {
   const [accounts, setAccounts] = useState<SocialAccount[]>(emptyAccounts);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,7 +80,6 @@ export function SocialAccounts({
     void loadAccounts();
   };
 
-  /** Оптимистично применяем изменение и откатываем его, если запрос упал. */
   const mutateAccount = (
     platform: SocialPlatform,
     optimistic: (account: SocialAccount) => SocialAccount,
@@ -114,11 +106,6 @@ export function SocialAccounts({
     });
   };
 
-  /**
-   * Instagram и Facebook подключаются одним входом в Meta, поэтому здесь мы
-   * уводим пользователя на диалог Meta и ждём возврата на callback. Оптимистично
-   * обновлять карточку нельзя: подключение завершится уже после перезагрузки.
-   */
   const handleMetaConnect = (platform: SocialPlatform) => {
     setPendingPlatform(platform);
 
@@ -166,18 +153,7 @@ export function SocialAccounts({
     );
   };
 
-  const handleToggleAutoPublish = (platform: SocialPlatform, autoPublish: boolean) => {
-    mutateAccount(
-      platform,
-      (account) => ({ ...account, autoPublish }),
-      () => updateAutoPublish(platform, autoPublish)
-    );
-  };
-
   const connectedCount = accounts.filter((account) => account.status === "connected").length;
-  const autoPublishNames = accounts
-    .filter((account) => account.autoPublish)
-    .map((account) => findSocialPlatform(account.platform).title);
 
   return (
     <div className="space-y-6">
@@ -187,7 +163,7 @@ export function SocialAccounts({
             <Share2 className="w-4 h-4 text-indigo-400" /> Social Connections
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Подключите аккаунты, чтобы публиковать генерации без выгрузки файлов.
+            Подключите аккаунты, выберите генерацию и опубликуйте её на площадку.
           </p>
         </div>
 
@@ -203,24 +179,20 @@ export function SocialAccounts({
               Refresh
             </button>
 
-            {onPublishRequest && (
-              <button
-                type="button"
-                onClick={onPublishRequest}
-                disabled={!canPublish || connectedCount === 0}
-                title={
-                  connectedCount === 0
-                    ? "Сначала подключите хотя бы один аккаунт"
-                    : !canPublish
-                      ? "Сначала сгенерируйте фото или видео"
-                      : undefined
-                }
-                className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white transition inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Send className="w-3.5 h-3.5" />
-                Publish Latest
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => onPublishRequest()}
+              disabled={connectedCount === 0}
+              title={
+                connectedCount === 0
+                  ? "Сначала подключите хотя бы один аккаунт"
+                  : "Выберите генерацию и площадки"
+              }
+              className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white transition inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Publish Latest
+            </button>
           </div>
         )}
       </div>
@@ -294,9 +266,7 @@ export function SocialAccounts({
                   isPending={isPending && pendingPlatform === account.platform}
                   onConnect={() => handleConnect(account.platform)}
                   onDisconnect={() => handleDisconnect(account.platform)}
-                  onToggleAutoPublish={(enabled) =>
-                    handleToggleAutoPublish(account.platform, enabled)
-                  }
+                  onPublish={() => onPublishRequest(account.platform)}
                 />
               ))}
             </div>
@@ -307,9 +277,7 @@ export function SocialAccounts({
               {connectedCount} of {SOCIAL_PLATFORMS.length} accounts connected
             </p>
             <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-              {autoPublishNames.length > 0
-                ? `Авто-публикация включена: ${autoPublishNames.join(", ")}. Новые генерации будут уходить в эти аккаунты автоматически.`
-                : "Авто-публикация выключена — каждую генерацию нужно отправлять вручную через Publish."}
+              Нажмите Publish Post на карточке — откроется выбор генерации, подпись и отправка.
             </p>
             <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
               Instagram подключается вместе со страницей Facebook одним входом в

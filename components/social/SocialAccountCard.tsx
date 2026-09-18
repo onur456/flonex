@@ -1,16 +1,15 @@
 "use client";
 
-import { CheckCircle2, CircleDashed, Link2, Loader2, Unlink } from "lucide-react";
+import { CheckCircle2, CircleDashed, Link2, Loader2, Send, Unlink } from "lucide-react";
 import { findSocialPlatform, type SocialAccount } from "@/lib/social";
 import { PlatformTile } from "./PlatformIcon";
-import { ToggleSwitch } from "./ToggleSwitch";
 
 interface SocialAccountCardProps {
   account: SocialAccount;
   isPending: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
-  onToggleAutoPublish: (enabled: boolean) => void;
+  onPublish: () => void;
 }
 
 function AccountAvatar({ account }: { account: SocialAccount }) {
@@ -38,7 +37,7 @@ export function SocialAccountCard({
   isPending,
   onConnect,
   onDisconnect,
-  onToggleAutoPublish,
+  onPublish,
 }: SocialAccountCardProps) {
   const meta = findSocialPlatform(account.platform);
   const isConnected = account.status === "connected";
@@ -68,22 +67,16 @@ export function SocialAccountCard({
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-slate-200">Auto-Publish Mode</p>
-          <p className="text-[10px] text-slate-500 leading-relaxed">
-            {isConnected
-              ? "Публиковать каждую новую генерацию сразу"
-              : "Доступно после подключения аккаунта"}
-          </p>
-        </div>
-        <ToggleSwitch
-          label={`Auto-publish to ${meta.title}`}
-          checked={account.autoPublish}
-          disabled={!isConnected || isPending}
-          onChange={onToggleAutoPublish}
-        />
-      </div>
+      <button
+        type="button"
+        onClick={onPublish}
+        disabled={!isConnected || isPending}
+        title={isConnected ? `Publish to ${meta.title}` : "Connect account first to publish"}
+        className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:opacity-95 transition inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:opacity-40"
+      >
+        <Send className="w-3.5 h-3.5" />
+        Publish Post
+      </button>
 
       <button
         type="button"

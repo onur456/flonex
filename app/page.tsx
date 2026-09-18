@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { PublishModal, type PublishMedia } from "@/components/social/PublishModal";
 import { SocialAccounts, type SocialNotice } from "@/components/social/SocialAccounts";
-import { findSocialPlatform, isSocialPlatform } from "@/lib/social";
+import { findSocialPlatform, isSocialPlatform, type SocialPlatform } from "@/lib/social";
 import { uploadProductImage } from "@/lib/uploadImage";
 import { formatSupabaseError, isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
@@ -62,7 +62,7 @@ const WORKSPACE_HEADERS: Record<WorkspaceView, { title: string; subtitle: string
   },
   social: {
     title: "Social Auto-Publish",
-    subtitle: "Connect accounts and push every generation to your channels",
+    subtitle: "Connect accounts, pick a generation, and publish",
   },
 };
 
@@ -118,7 +118,13 @@ const [isUploading, setIsUploading] = useState(false);
 
   // Публикация в соцсети
   const [isPublishOpen, setIsPublishOpen] = useState(false);
+  const [publishTarget, setPublishTarget] = useState<SocialPlatform | null>(null);
   const [socialNotice, setSocialNotice] = useState<SocialNotice | null>(null);
+
+  const openPublishModal = (platform?: SocialPlatform) => {
+    setPublishTarget(platform ?? null);
+    setIsPublishOpen(true);
+  };
 
   /**
    * Из OAuth-диалога Meta пользователь возвращается редиректом на «/», а
@@ -720,8 +726,7 @@ const [isUploading, setIsUploading] = useState(false);
             <SocialAccounts
               isSignedIn={Boolean(user)}
               notice={socialNotice}
-              canPublish={Boolean(publishMedia)}
-              onPublishRequest={() => setIsPublishOpen(true)}
+              onPublishRequest={openPublishModal}
             />
           </div>
         )}
@@ -1088,7 +1093,7 @@ const [isUploading, setIsUploading] = useState(false);
                   </div>
                   <button
                     type="button"
-                    onClick={() => setIsPublishOpen(true)}
+                    onClick={() => openPublishModal()}
                     className="w-full py-2.5 rounded-lg bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:opacity-95 text-xs font-bold text-white flex items-center justify-center gap-2 transition"
                   >
                     <Send className="w-4 h-4" /> Publish to Social
@@ -1195,10 +1200,14 @@ const [isUploading, setIsUploading] = useState(false);
         </div>
       </main>
 
-      {isPublishOpen && publishMedia && (
+      {isPublishOpen && (
         <PublishModal
-          onClose={() => setIsPublishOpen(false)}
-          media={publishMedia}
+          onClose={() => {
+            setIsPublishOpen(false);
+            setPublishTarget(null);
+          }}
+          initialMedia={publishMedia}
+          lockedPlatform={publishTarget}
           productName={productName}
         />
       )}
