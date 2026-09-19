@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   AlertTriangle,
@@ -47,9 +47,11 @@ export function ImageTo3DTab({
   onPublish,
 }: ImageTo3DTabProps) {
   const [assets, setAssets] = useState<GenerationAsset[]>([]);
+  const [localAssets, setLocalAssets] = useState<GenerationAsset[]>([]);
   const [isLoadingAssets, setIsLoadingAssets] = useState(true);
   const [userSelection, setUserSelection] = useState<string | null>(null);
   const selectedUrl = userSelection ?? latestImageUrl;
+  const blobUrlsRef = useRef<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -81,15 +83,40 @@ export function ImageTo3DTab({
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
+
   const handleUpload = async (file: File) => {
     setIsUploading(true);
     setError(null);
+    setModelUrl(null);
+    setSaved(false);
+
+    const blobUrl = URL.createObjectURL(file);
+    blobUrlsRef.current.push(blobUrl);
+    const localId = `upload-${Date.now()}`;
+
+    setLocalAssets((prev) => [
+      {
+        id: localId,
+        url: blobUrl,
+        type: "image",
+        productName: file.name.replace(/\.[^.]+$/, "") || "Upload",
+        createdAt: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+    setUserSelection(blobUrl);
 
     try {
       const url = await uploadProductImage(file);
+      setLocalAssets((prev) =>
+        prev.map((item) => (item.id === localId ? { ...item, url } : item))
+      );
       setUserSelection(url);
-      setModelUrl(null);
-      setSaved(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : formatSupabaseError(err));
     } finally {
@@ -189,8 +216,16 @@ export function ImageTo3DTab({
   };
 
   const pickerItems: GenerationAsset[] = [];
-  if (latestImageUrl && !assets.some((asset) => asset.url === latestImageUrl)) {
-    pickerItems.push({
+  const seenUrls = new Set<string>();
+  const pushItem = (item: GenerationAsset) => {
+    if (!item.url || seenUrls.has(item.url)) return;
+    seenUrls.add(item.url);
+    pickerItems.push(item);
+  };
+
+  localAssets.forEach(pushItem);
+  if (latestImageUrl) {
+    pushItem({
       id: "latest",
       url: latestImageUrl,
       type: "image",
@@ -198,7 +233,13 @@ export function ImageTo3DTab({
       createdAt: new Date().toISOString(),
     });
   }
-  pickerItems.push(...assets);
+  assets.forEach(pushItem);
+
+  const canGenerate =
+    Boolean(selectedUrl?.startsWith("http")) &&
+    !isGenerating &&
+    !isUploading &&
+    credits > 0;
 
   return (
     <div className="space-y-8">
@@ -239,18 +280,34 @@ export function ImageTo3DTab({
               </label>
             </div>
 
-            {isLoadingAssets ? (
+            {selectedUrl && (
+              <div className="relative w-full h-52 rounded-xl overflow-hidden border border-violet-500/40 bg-slate-950">
+                <img
+                  src={selectedUrl}
+                  alt="Selected product"
+                  className="w-full h-full object-contain"
+                />
+                {isUploading && (
+                  <div className="absolute inset-0 bg-slate-950/70 flex items-center justify-center gap-2 text-xs text-violet-300 font-medium">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Uploading photo...
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isLoadingAssets && pickerItems.length === 0 && !selectedUrl ? (
               <div className="flex items-center justify-center gap-2 py-10 text-xs text-slate-400">
                 <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
                 Загружаем генерации...
               </div>
-            ) : pickerItems.length === 0 ? (
+            ) : pickerItems.length === 0 && !selectedUrl ? (
               <div className="flex flex-col items-center gap-2 py-10 text-center">
                 <ImageIcon className="w-6 h-6 text-slate-600" />
                 <p className="text-xs text-slate-400">Нет сохранённых фото</p>
                 <p className="text-[11px] text-slate-500">Загрузите файл или сначала сгенерируйте AI Photo</p>
               </div>
-            ) : (
+            ) : pickerItems.length > 0 ? (
               <div className="grid grid-cols-3 gap-2">
                 {pickerItems.map((item) => {
                   const selected = selectedUrl === item.url;
@@ -264,7 +321,7 @@ export function ImageTo3DTab({
                         setModelUrl(null);
                         setSaved(false);
                       }}
-                      disabled={isGenerating}
+                      disabled={isGenerating || isUploading}
                       className={`relative aspect-square rounded-xl overflow-hidden border bg-slate-950 transition ${
                         selected
                           ? "border-violet-500 ring-2 ring-violet-500/30"
@@ -285,13 +342,13 @@ export function ImageTo3DTab({
                   );
                 })}
               </div>
-            )}
+            ) : null}
           </div>
 
           <button
             type="button"
             onClick={handleGenerate}
-            disabled={!selectedUrl || isGenerating || credits <= 0}
+            disabled={!canGenerate}
             className="w-full py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-violet-600 via-indigo-500 to-fuchsia-500 hover:opacity-95 transition inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isGenerating ? (
