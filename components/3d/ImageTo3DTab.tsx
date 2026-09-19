@@ -258,7 +258,12 @@ export function ImageTo3DTab({
         <div className="lg:col-span-5 space-y-5">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-medium text-slate-400">Source image</h3>
+              <div>
+                <h3 className="text-xs font-medium text-slate-200">Фото для 3D</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Большая картинка — выбранный товар. Справа после Generate появится модель.
+                </p>
+              </div>
               <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-semibold text-slate-200 cursor-pointer transition">
                 {isUploading ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -308,9 +313,14 @@ export function ImageTo3DTab({
                 <p className="text-[11px] text-slate-500">Загрузите файл или сначала сгенерируйте AI Photo</p>
               </div>
             ) : pickerItems.length > 0 ? (
-              <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-500">
+                  Миниатюры — все доступные фото. С галочкой — то, из чего сделаем 3D.
+                </p>
+                <div className="grid grid-cols-3 gap-2">
                 {pickerItems.map((item) => {
                   const selected = selectedUrl === item.url;
+                  const isUpload = item.id.startsWith("upload-");
 
                   return (
                     <button
@@ -333,6 +343,9 @@ export function ImageTo3DTab({
                         alt={item.productName || "Product"}
                         className="w-full h-full object-cover"
                       />
+                      <span className="absolute bottom-1 left-1 rounded bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-medium text-slate-300">
+                        {isUpload ? "Upload" : "History"}
+                      </span>
                       {selected && (
                         <span className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-violet-500 text-white flex items-center justify-center">
                           <CheckCircle2 className="w-3.5 h-3.5" />
@@ -341,6 +354,7 @@ export function ImageTo3DTab({
                     </button>
                   );
                 })}
+                </div>
               </div>
             ) : null}
           </div>
