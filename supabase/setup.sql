@@ -12,6 +12,12 @@ create table if not exists public.generations (
   created_at timestamptz default now()
 );
 
+-- Existing projects created this table before product_name/category existed.
+-- CREATE TABLE IF NOT EXISTS will not add those columns, so alter explicitly.
+alter table public.generations
+  add column if not exists product_name text,
+  add column if not exists category text;
+
 alter table public.generations enable row level security;
 
 drop policy if exists "Allow public read generations" on public.generations;
