@@ -234,3 +234,39 @@ revoke all on public.social_account_secrets from anon, authenticated;
 -- невозможна. У Meta поле остаётся null.
 alter table public.social_account_secrets
   add column if not exists refresh_token text;
+
+-- 3D meshes from Image to 3D (TripoSR). Bucket must be public so the viewer
+-- and Fal.ai can fetch the GLB without a signed URL.
+insert into storage.buckets (id, name, public)
+values ('3d-models', '3d-models', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "Public read 3d-models bucket" on storage.objects;
+create policy "Public read 3d-models bucket"
+  on storage.objects for select
+  using (bucket_id = '3d-models');
+
+drop policy if exists "Anon upload 3d-models bucket" on storage.objects;
+create policy "Anon upload 3d-models bucket"
+  on storage.objects for insert
+  with check (bucket_id = '3d-models');
+
+create table if not exists public.generated_models (
+  id uuid default gen_random_uuid() primary key,
+  source_image_url text not null,
+  model_url text not null,
+  product_name text,
+  created_at timestamptz default now()
+);
+
+alter table public.generated_models enable row level security;
+
+drop policy if exists "Allow public read generated models" on public.generated_models;
+create policy "Allow public read generated models"
+  on public.generated_models for select
+  using (true);
+
+drop policy if exists "Allow public insert generated models" on public.generated_models;
+create policy "Allow public insert generated models"
+  on public.generated_models for insert
+  with check (true);

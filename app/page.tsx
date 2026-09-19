@@ -24,8 +24,10 @@ import {
   Check, 
   AlertTriangle,
   LogOut,
-  Send
+  Send,
+  Box
 } from "lucide-react";
+import { ImageTo3DTab } from "@/components/3d/ImageTo3DTab";
 import { PublishModal, type PublishMedia } from "@/components/social/PublishModal";
 import { SocialAccounts, type SocialNotice } from "@/components/social/SocialAccounts";
 import { findSocialPlatform, isSocialPlatform, type SocialPlatform } from "@/lib/social";
@@ -80,7 +82,7 @@ function isVideoMediaUrl(url: string): boolean {
 
 export default function FlonexDashboard() {
   const [activeView, setActiveView] = useState<WorkspaceView>("create");
-  const [contentType, setContentType] = useState<"photo" | "card" | "video">("photo");
+  const [contentType, setContentType] = useState<"photo" | "card" | "video" | "3d">("photo");
   const [aspectRatio, setAspectRatio] = useState("3:4");
   const [style, setStyle] = useState("commercial");
   
@@ -485,6 +487,26 @@ const [isUploading, setIsUploading] = useState(false);
     }
   };
 
+  const spendOneCredit = async () => {
+    if (user) {
+      const { data: newBalance, error: spendError } = await supabase.rpc(
+        "spend_credits",
+        { p_amount: 1 }
+      );
+
+      if (!spendError && typeof newBalance === "number") {
+        setCredits(newBalance);
+      } else {
+        if (spendError) {
+          console.error("spend_credits error:", formatSupabaseError(spendError));
+        }
+        setCredits((prev) => Math.max(0, prev - 1));
+      }
+    } else {
+      setCredits((prev) => Math.max(0, prev - 1));
+    }
+  };
+
   const handleGenerate = async () => {
     if (!uploadedPublicUrl) {
       alert("Пожалуйста, сначала загрузите фото товара!");
@@ -531,24 +553,7 @@ const [isUploading, setIsUploading] = useState(false);
       if (data.success && resultUrl) {
         setGeneratedImage(resultUrl);
         setGeneratedIsVideo(isVideoMode || isVideoMediaUrl(resultUrl));
-
-        if (user) {
-          const { data: newBalance, error: spendError } = await supabase.rpc(
-            "spend_credits",
-            { p_amount: 1 }
-          );
-
-          if (!spendError && typeof newBalance === "number") {
-            setCredits(newBalance);
-          } else {
-            if (spendError) {
-              console.error("spend_credits error:", formatSupabaseError(spendError));
-            }
-            setCredits((prev) => Math.max(0, prev - 1));
-          }
-        } else {
-          setCredits((prev) => Math.max(0, prev - 1));
-        }
+        await spendOneCredit();
 
         const savedGeneration = data.generation;
         if (savedGeneration) {
@@ -775,11 +780,43 @@ const [isUploading, setIsUploading] = useState(false);
               >
                 <Video className="w-4 h-4" /> Motion Video
               </button>
+              <button
+                type="button"
+                onClick={() => setContentType("3d")}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium text-sm transition ${
+                  contentType === "3d"
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Box className="w-4 h-4" /> Image to 3D
+              </button>
             </div>
           </div>
 
+          {/* IMAGE TO 3D */}
+          <div className={contentType === "3d" ? "" : "hidden"}>
+            <ImageTo3DTab
+              latestImageUrl={
+                generatedImage && !generatedIsVideo ? generatedImage : null
+              }
+              productName={productName}
+              credits={credits}
+              onCreditSpent={spendOneCredit}
+              onPublish={(media) => {
+                setGeneratedImage(media.url);
+                setGeneratedIsVideo(media.type === "video");
+                openPublishModal();
+              }}
+            />
+          </div>
+
           {/* MAIN GENERATOR GRID */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div
+            className={`grid grid-cols-1 lg:grid-cols-12 gap-8 items-start ${
+              contentType === "3d" ? "hidden" : ""
+            }`}
+          >
             
             {/* UPLOAD & CONTROLS (LEFT - 7 COLS) */}
             <div className="lg:col-span-7 space-y-6">

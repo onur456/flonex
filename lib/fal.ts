@@ -5,6 +5,7 @@ export const FAL_IMAGE_MODEL = "fal-ai/flux/dev";
 export const FAL_IMAGE_TO_IMAGE_MODEL = "fal-ai/flux/dev/image-to-image";
 export const FAL_VIDEO_MODEL =
   "fal-ai/kling-video/v1/standard/image-to-video";
+export const FAL_3D_MODEL = "fal-ai/triposr";
 
 export type FalImageSize =
   | "square_hd"
@@ -29,6 +30,10 @@ export interface FalImageResult {
 
 export interface FalVideoResult {
   video?: FalFile;
+}
+
+export interface FalModelResult {
+  model_mesh?: FalFile;
 }
 
 export class FalRequestError extends Error {
@@ -138,6 +143,7 @@ function hasMediaResult(payload: unknown): boolean {
   const data = payload as Record<string, unknown>;
   if (Array.isArray(data.images) && data.images.length > 0) return true;
   if (data.video && typeof data.video === "object") return true;
+  if (data.model_mesh && typeof data.model_mesh === "object") return true;
   return false;
 }
 
@@ -315,6 +321,26 @@ export function extractVideoUrl(payload: unknown): string | null {
   if (data.video?.url) return data.video.url;
   if (typeof data.video_url === "string" && data.video_url) {
     return data.video_url;
+  }
+
+  return null;
+}
+
+export function extractModelUrl(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const data = payload as FalModelResult & {
+    model?: FalFile;
+    model_url?: string;
+    data?: unknown;
+  };
+
+  if (data.model_mesh?.url) return data.model_mesh.url;
+  if (data.model?.url) return data.model.url;
+  if (typeof data.model_url === "string" && data.model_url) {
+    return data.model_url;
+  }
+  if (data.data && data.data !== payload) {
+    return extractModelUrl(data.data);
   }
 
   return null;
