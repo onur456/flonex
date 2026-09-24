@@ -18,15 +18,14 @@ export const metaClientSecret = process.env.META_CLIENT_SECRET?.trim() || "";
 export const isMetaConfigured = Boolean(metaClientId && metaClientSecret);
 
 /**
- * `publish_video` нужен только для видео на страницу Facebook. Если приложение
- * его не получило, диалог входа вернёт ошибку — тогда достаточно убрать строку,
- * фото и Instagram продолжат работать.
+ * `publish_video` больше нельзя ставить в Facebook Login: Meta считает его
+ * невалидным scope и показывает Invalid Scopes разработчику. Видео на Page
+ * публикуются с `pages_manage_posts` через `/{page-id}/videos`.
  */
 export const META_SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
   "pages_manage_posts",
-  "publish_video",
   "instagram_basic",
   "instagram_content_publish",
 ];

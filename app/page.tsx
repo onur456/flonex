@@ -97,6 +97,7 @@ export default function FlonexDashboard() {
   const [selectedOptionId, setSelectedOptionId] = useState(DEFAULT_CATEGORY.options[0].id);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisNotice, setAnalysisNotice] = useState<string | null>(null);
 
   // Выбранный подвариант съёмки внутри категории
   const selectedOption =
@@ -444,13 +445,27 @@ const [isUploading, setIsUploading] = useState(false);
     setUploadedPublicUrl(null);
     setGeneratedImage(null);
     setGeneratedIsVideo(false);
+    setAnalysisNotice(null);
     setIsUploading(true);
     setIsAnalyzing(true);
 
     try {
       const publicUrl = await uploadProductImage(file);
       setUploadedPublicUrl(publicUrl);
+    } catch (err) {
+      const message = formatSupabaseError(err);
+      console.error("Image upload failed:", message);
+      setUploadedPublicUrl(null);
+      setIsUploading(false);
+      setIsAnalyzing(false);
+      e.target.value = "";
+      alert(`Ошибка загрузки: ${message}`);
+      return;
+    }
 
+    setIsUploading(false);
+
+    try {
       const formData = new FormData();
       formData.append("file", file);
 
@@ -459,7 +474,11 @@ const [isUploading, setIsUploading] = useState(false);
         body: formData,
       });
 
-      const data = await res.json();
+      const data = (await res.json()) as {
+        productName?: string;
+        categoryId?: string;
+        error?: string;
+      };
 
       if (!res.ok) {
         throw new Error(data.error || `Server status ${res.status}`);
@@ -476,12 +495,11 @@ const [isUploading, setIsUploading] = useState(false);
         }
       }
     } catch (err) {
-      const message = formatSupabaseError(err);
-      console.error("Image upload/analysis failed:", message);
-      setUploadedPublicUrl(null);
-      alert(`Ошибка загрузки/анализа: ${message}`);
+      console.error("Product analysis failed:", err);
+      setAnalysisNotice(
+        "AI naming is busy right now. The photo is saved — type the product title yourself and continue."
+      );
     } finally {
-      setIsUploading(false);
       setIsAnalyzing(false);
       e.target.value = "";
     }
@@ -827,7 +845,7 @@ const [isUploading, setIsUploading] = useState(false);
   {isUploading ? (
     <div className="flex flex-col items-center gap-2 text-indigo-400">
       <Loader2 className="w-8 h-8 animate-spin" />
-      <span className="text-sm font-medium">Uploading & Analyzing with AI...</span>
+      <span className="text-sm font-medium">Uploading photo...</span>
     </div>
   ) : previewUrl ? (
     <div className="relative w-full h-52 rounded-lg overflow-hidden group">
@@ -870,6 +888,9 @@ const [isUploading, setIsUploading] = useState(false);
     </label>
   )}
 </div>
+              {analysisNotice && (
+                <p className="text-xs text-amber-300/90 px-1">{analysisNotice}</p>
+              )}
 
               {/* PRODUCT INFO BLOCK (THIS IS) */}
               <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 space-y-4">

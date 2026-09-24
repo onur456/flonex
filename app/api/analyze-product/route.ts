@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { CATEGORY_IDS } from "@/lib/categories";
+import {
+  GEMINI_ANALYZE_MODELS,
+  GeminiRequestError,
+  generateGeminiContent,
+} from "@/lib/gemini";
 
-const MODEL = "gemini-3.5-flash-lite";
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
@@ -18,17 +23,11 @@ export async function POST(req: Request) {
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
-      return NextResponse.json(
-        { error: "No file provided" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     if (!file.type.startsWith("image/")) {
-      return NextResponse.json(
-        { error: "File must be an image" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "File must be an image" }, { status: 400 });
     }
 
     if (file.size > 10 * 1024 * 1024) {
@@ -53,67 +52,45 @@ Do not invent a brand or model that is not clearly visible.
 If the product cannot be identified reliably, use "other".
 `;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: prompt,
-                },
-                {
-                  inline_data: {
-                    mime_type: file.type,
-                    data: base64Data,
-                  },
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: "OBJECT",
-              properties: {
-                productName: {
-                  type: "STRING",
-                },
-                categoryId: {
-                  type: "STRING",
-                  enum: CATEGORY_IDS,
+    const { result } = await generateGeminiContent({
+      apiKey,
+      models: GEMINI_ANALYZE_MODELS,
+      body: {
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              {
+                inline_data: {
+                  mime_type: file.type,
+                  data: base64Data,
                 },
               },
-              required: ["productName", "categoryId"],
-            },
+            ],
           },
-        }),
-      }
-    );
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      console.error("GEMINI API ERROR:", result);
-
-      return NextResponse.json(
-        {
-          error:
-            result?.error?.message ||
-            `Gemini API Error: ${response.status}`,
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "OBJECT",
+            properties: {
+              productName: { type: "STRING" },
+              categoryId: {
+                type: "STRING",
+                enum: CATEGORY_IDS,
+              },
+            },
+            required: ["productName", "categoryId"],
+          },
         },
-        { status: response.status }
-      );
-    }
+      },
+    });
 
-    const responseText =
-      result?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const payload = result as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const responseText = payload.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!responseText) {
       return NextResponse.json(
@@ -139,21 +116,12 @@ If the product cannot be identified reliably, use "other".
       );
     }
 
-    if (
-      typeof data.productName !== "string" ||
-      !data.productName.trim()
-    ) {
-      return NextResponse.json(
-        { error: "Invalid productName" },
-        { status: 502 }
-      );
+    if (typeof data.productName !== "string" || !data.productName.trim()) {
+      return NextResponse.json({ error: "Invalid productName" }, { status: 502 });
     }
 
     if (!CATEGORY_IDS.includes(data.categoryId)) {
-      return NextResponse.json(
-        { error: "Invalid categoryId" },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "Invalid categoryId" }, { status: 502 });
     }
 
     return NextResponse.json({
@@ -161,16 +129,29 @@ If the product cannot be identified reliably, use "other".
       categoryId: data.categoryId,
     });
   } catch (error) {
+    if (error instanceof GeminiRequestError) {
+      console.error("GEMINI API ERROR:", error.message);
+      return NextResponse.json(
+        {
+          error: error.message,
+          retryable: isLikelyBusy(error),
+        },
+        { status: error.status || 503 }
+      );
+    }
+
     console.error("ANALYSIS ROUTE ERROR:", error);
 
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "Internal Server Error",
+          error instanceof Error ? error.message : "Internal Server Error",
       },
       { status: 500 }
     );
   }
+}
+
+function isLikelyBusy(error: GeminiRequestError): boolean {
+  return error.status === 429 || error.status === 503;
 }
