@@ -4,10 +4,10 @@ import { motion } from "framer-motion";
 import type { ReactNode } from "react";
 
 export const GLASS_TAB_GROUP =
-  "rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md";
+  "rounded-2xl border border-violet-900/30 bg-[#0b0f19]/60 backdrop-blur-md";
 
 const ACTIVE_PILL =
-  "absolute inset-0 rounded-xl bg-white/10 backdrop-blur-lg border border-white/20 shadow-[0_8px_32px_0_rgba(0,0,0,0.36)]";
+  "absolute inset-0 rounded-xl bg-gradient-to-r from-violet-600/30 via-indigo-600/30 to-purple-600/30 backdrop-blur-xl border border-violet-500/40 shadow-[0_0_25px_rgba(124,58,237,0.3)]";
 
 const TAB_TRANSITION = { type: "spring" as const, stiffness: 400, damping: 30 };
 
@@ -34,13 +34,13 @@ export function GlassTabButton({
       onClick={onClick}
       disabled={disabled}
       aria-current={active ? "page" : undefined}
-      className={`relative isolate z-0 flex items-center rounded-xl text-sm ${
+      className={`relative isolate z-0 flex items-center rounded-xl text-sm border transition-colors ${
         stretch ? "w-full justify-start px-3 py-2.5" : "px-6 py-2.5"
       } ${
         active
-          ? "text-white font-medium"
-          : "text-zinc-400 hover:text-zinc-200 transition-colors"
-      } ${disabled ? "cursor-default hover:text-zinc-400" : ""}`}
+          ? "border-transparent text-white font-semibold"
+          : "border-transparent text-slate-400 hover:border-violet-500/20 hover:bg-white/[0.05] hover:text-slate-200"
+      } ${disabled ? "cursor-default hover:border-transparent hover:bg-transparent hover:text-slate-400" : ""}`}
     >
       {active ? (
         <motion.div

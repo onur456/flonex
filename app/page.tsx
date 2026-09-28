@@ -601,7 +601,7 @@ const [isUploading, setIsUploading] = useState(false);
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden">
       {/* SIDEBAR */}
-      <aside className="w-64 border-r border-white/10 bg-slate-900/40 backdrop-blur-md flex flex-col justify-between p-4">
+      <aside className="w-64 border-r border-violet-900/30 bg-[#0b0f19]/60 backdrop-blur-md flex flex-col justify-between p-4">
         <div>
           {/* LOGO */}
           <div className="flex items-center gap-3 px-2 py-3 mb-6">

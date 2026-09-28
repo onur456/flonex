@@ -1,0 +1,10 @@
+---
+description: Always commit and push finished work to GitHub at the end of a task
+alwaysApply: true
+---
+
+# Auto-push to Git
+
+When a task is finished and there are relevant code changes, always create a git commit and push to `origin` without waiting for the user to say "загрузи на git".
+
+Follow the existing git safety protocol: never update git config, never skip hooks, never force-push, never commit `.env` / secrets. Draft a concise commit message from the diff, then `git add`, `git commit`, `git push origin HEAD`.
