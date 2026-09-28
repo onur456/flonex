@@ -71,7 +71,7 @@ const WORKSPACE_HEADERS: Record<WorkspaceView, { title: string; subtitle: string
   },
   calendar: {
     title: "Calendar & Content Planner",
-    subtitle: "Plan posts across Facebook and Instagram on a month or week grid",
+    subtitle: "Plan posts across Facebook, Instagram, and TikTok on a month or week grid",
   },
 };
 

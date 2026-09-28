@@ -30,7 +30,7 @@ import {
 } from "@/lib/social";
 import { PlatformTile } from "@/components/social/PlatformIcon";
 
-const PLANNER_PLATFORMS: SocialPlatform[] = ["facebook", "instagram"];
+const PLANNER_PLATFORMS: SocialPlatform[] = ["facebook", "instagram", "tiktok"];
 
 interface SchedulePostModalProps {
   day: Date;
@@ -299,7 +299,7 @@ export function SchedulePostModal({
 
               <section className="space-y-2">
                 <h3 className="text-xs font-medium text-slate-400">Target account</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {connected.map((item) => {
                     const meta = findSocialPlatform(item.id);
                     const active = platform === item.id;
@@ -332,9 +332,10 @@ export function SchedulePostModal({
                     );
                   })}
                 </div>
-                {platform === "instagram" && (
+                {(platform === "instagram" || platform === "tiktok") && (
                   <p className="text-[11px] text-amber-300/90">
-                    Instagram API не ставит посты в очередь — карточка останется в календаре как queued.
+                    {findSocialPlatform(platform).title} API не умеет отложенную публикацию —
+                    карточка останется в календаре как queued.
                   </p>
                 )}
               </section>
@@ -393,7 +394,7 @@ export function SchedulePostModal({
                 </div>
                 <p className="text-[11px] text-slate-500 inline-flex items-center gap-1">
                   <CalendarClock className="w-3 h-3" />
-                  Facebook native schedule: 10 minutes – 30 days. Planner keeps Instagram locally.
+                  Facebook native schedule: 10 minutes – 30 days. Instagram and TikTok stay queued in the planner.
                 </p>
               </section>
             </>
