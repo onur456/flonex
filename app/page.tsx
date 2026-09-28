@@ -28,6 +28,7 @@ import {
   Box
 } from "lucide-react";
 import { ImageTo3DTab } from "@/components/3d/ImageTo3DTab";
+import { GlassTabButton, GLASS_TAB_GROUP } from "@/components/ui/GlassTabButton";
 import { PublishModal, type PublishMedia } from "@/components/social/PublishModal";
 import { SocialAccounts, type SocialNotice } from "@/components/social/SocialAccounts";
 import { findSocialPlatform, isSocialPlatform, type SocialPlatform } from "@/lib/social";
@@ -67,9 +68,6 @@ const WORKSPACE_HEADERS: Record<WorkspaceView, { title: string; subtitle: string
     subtitle: "Connect accounts, pick a generation, and publish",
   },
 };
-
-const NAV_PLACEHOLDER_CLASS =
-  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/50";
 
 function isVideoMediaUrl(url: string): boolean {
   const clean = url.split("?")[0].toLowerCase();
@@ -594,13 +592,6 @@ const [isUploading, setIsUploading] = useState(false);
     }
   };
 
-  const navItemClass = (view: WorkspaceView) =>
-    `w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition border ${
-      activeView === view
-        ? "bg-indigo-600/10 text-indigo-400 border-indigo-500/20"
-        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border-transparent"
-    }`;
-
   const workspaceHeader = WORKSPACE_HEADERS[activeView];
 
   const publishMedia: PublishMedia | null = generatedImage
@@ -610,7 +601,7 @@ const [isUploading, setIsUploading] = useState(false);
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden">
       {/* SIDEBAR */}
-      <aside className="w-64 border-r border-slate-800 bg-slate-900/50 flex flex-col justify-between p-4">
+      <aside className="w-64 border-r border-white/10 bg-slate-900/40 backdrop-blur-md flex flex-col justify-between p-4">
         <div>
           {/* LOGO */}
           <div className="flex items-center gap-3 px-2 py-3 mb-6">
@@ -626,23 +617,33 @@ const [isUploading, setIsUploading] = useState(false);
           </div>
 
           {/* NAVIGATION */}
-          <nav className="space-y-1">
-            <button type="button" onClick={() => setActiveView("create")} className={navItemClass("create")}>
+          <nav className={`${GLASS_TAB_GROUP} space-y-1 p-1`}>
+            <GlassTabButton
+              active={activeView === "create"}
+              layoutId="sidebarActive"
+              stretch
+              onClick={() => setActiveView("create")}
+            >
               <Sparkles className="w-4 h-4" />
               Create Content
-            </button>
-            <button className={NAV_PLACEHOLDER_CLASS}>
+            </GlassTabButton>
+            <GlassTabButton active={false} layoutId="sidebarActive" stretch disabled>
               <Store className="w-4 h-4" />
               Products & Stores
-            </button>
-            <button className={NAV_PLACEHOLDER_CLASS}>
+            </GlassTabButton>
+            <GlassTabButton active={false} layoutId="sidebarActive" stretch disabled>
               <BarChart3 className="w-4 h-4" />
               A/B Tests & CTR
-            </button>
-            <button type="button" onClick={() => setActiveView("social")} className={navItemClass("social")}>
+            </GlassTabButton>
+            <GlassTabButton
+              active={activeView === "social"}
+              layoutId="sidebarActive"
+              stretch
+              onClick={() => setActiveView("social")}
+            >
               <Share2 className="w-4 h-4" />
               Social Auto-Publish
-            </button>
+            </GlassTabButton>
           </nav>
         </div>
 
@@ -764,51 +765,35 @@ const [isUploading, setIsUploading] = useState(false);
           
           {/* TYPE SELECTOR TOGGLE */}
           <div className="flex justify-center">
-            <div className="bg-slate-900 p-1.5 rounded-2xl border border-slate-800 flex gap-2">
-              <button
-                type="button"
+            <div className={`${GLASS_TAB_GROUP} inline-flex flex-wrap justify-center gap-1 p-1.5`}>
+              <GlassTabButton
+                active={contentType === "photo"}
+                layoutId="topTabActive"
                 onClick={() => setContentType("photo")}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium text-sm transition ${
-                  contentType === "photo"
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
               >
                 <ImageIcon className="w-4 h-4" /> AI Photo
-              </button>
-              <button
-                type="button"
+              </GlassTabButton>
+              <GlassTabButton
+                active={contentType === "card"}
+                layoutId="topTabActive"
                 onClick={() => setContentType("card")}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium text-sm transition ${
-                  contentType === "card"
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
               >
                 <Layers className="w-4 h-4" /> E-Com Card Mode
-              </button>
-              <button
-                type="button"
+              </GlassTabButton>
+              <GlassTabButton
+                active={contentType === "video"}
+                layoutId="topTabActive"
                 onClick={() => setContentType("video")}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium text-sm transition ${
-                  contentType === "video"
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
               >
                 <Video className="w-4 h-4" /> Motion Video
-              </button>
-              <button
-                type="button"
+              </GlassTabButton>
+              <GlassTabButton
+                active={contentType === "3d"}
+                layoutId="topTabActive"
                 onClick={() => setContentType("3d")}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium text-sm transition ${
-                  contentType === "3d"
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
               >
                 <Box className="w-4 h-4" /> Image to 3D
-              </button>
+              </GlassTabButton>
             </div>
           </div>
 
