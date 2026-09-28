@@ -25,8 +25,10 @@ import {
   AlertTriangle,
   LogOut,
   Send,
-  Box
+  Box,
+  Calendar
 } from "lucide-react";
+import { CalendarView } from "@/components/calendar/CalendarView";
 import { ImageTo3DTab } from "@/components/3d/ImageTo3DTab";
 import { GlassTabButton, GLASS_TAB_GROUP } from "@/components/ui/GlassTabButton";
 import { PublishModal, type PublishMedia } from "@/components/social/PublishModal";
@@ -56,7 +58,7 @@ interface GenerationItem {
 }
 
 /** Разделы сайдбара, у которых есть собственный рабочий экран. */
-type WorkspaceView = "create" | "social";
+type WorkspaceView = "create" | "social" | "calendar";
 
 const WORKSPACE_HEADERS: Record<WorkspaceView, { title: string; subtitle: string }> = {
   create: {
@@ -66,6 +68,10 @@ const WORKSPACE_HEADERS: Record<WorkspaceView, { title: string; subtitle: string
   social: {
     title: "Social Auto-Publish",
     subtitle: "Connect accounts, pick a generation, and publish",
+  },
+  calendar: {
+    title: "Calendar & Content Planner",
+    subtitle: "Plan posts across Facebook and Instagram on a month or week grid",
   },
 };
 
@@ -636,6 +642,15 @@ const [isUploading, setIsUploading] = useState(false);
               A/B Tests & CTR
             </GlassTabButton>
             <GlassTabButton
+              active={activeView === "calendar"}
+              layoutId="sidebarActive"
+              stretch
+              onClick={() => setActiveView("calendar")}
+            >
+              <Calendar className="w-4 h-4" />
+              Calendar
+            </GlassTabButton>
+            <GlassTabButton
               active={activeView === "social"}
               layoutId="sidebarActive"
               stretch
@@ -743,6 +758,10 @@ const [isUploading, setIsUploading] = useState(false);
             )}
           </div>
         </header>
+
+        {activeView === "calendar" && (
+          <CalendarView userId={user?.id ?? null} productName={productName} />
+        )}
 
         {/* SOCIAL AUTO-PUBLISH */}
         {activeView === "social" && (

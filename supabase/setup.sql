@@ -276,3 +276,46 @@ drop policy if exists "Allow public insert generated models" on public.generated
 create policy "Allow public insert generated models"
   on public.generated_models for insert
   with check (true);
+
+-- Content planner: scheduled social posts shown on the Calendar view.
+create table if not exists public.scheduled_posts (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade,
+  media_url text not null,
+  media_type text not null,
+  platform text not null,
+  account_label text,
+  caption text,
+  scheduled_at timestamptz not null,
+  status text not null default 'scheduled',
+  created_at timestamptz default now(),
+  constraint scheduled_posts_media_type_check
+    check (media_type in ('image', 'video')),
+  constraint scheduled_posts_platform_check
+    check (platform in ('instagram', 'facebook', 'tiktok')),
+  constraint scheduled_posts_status_check
+    check (status in ('scheduled', 'queued', 'published', 'failed'))
+);
+
+alter table public.scheduled_posts enable row level security;
+
+drop policy if exists "Users can read own scheduled posts" on public.scheduled_posts;
+create policy "Users can read own scheduled posts"
+  on public.scheduled_posts for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can insert own scheduled posts" on public.scheduled_posts;
+create policy "Users can insert own scheduled posts"
+  on public.scheduled_posts for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update own scheduled posts" on public.scheduled_posts;
+create policy "Users can update own scheduled posts"
+  on public.scheduled_posts for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete own scheduled posts" on public.scheduled_posts;
+create policy "Users can delete own scheduled posts"
+  on public.scheduled_posts for delete
+  using (auth.uid() = user_id);
