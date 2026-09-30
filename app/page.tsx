@@ -29,6 +29,7 @@ import {
   Calendar
 } from "lucide-react";
 import { CalendarView } from "@/components/calendar/CalendarView";
+import { ProductsStoresView } from "@/components/stores/ProductsStoresView";
 import { ImageTo3DTab } from "@/components/3d/ImageTo3DTab";
 import { GlassTabButton, GLASS_TAB_GROUP } from "@/components/ui/GlassTabButton";
 import { PublishModal, type PublishMedia } from "@/components/social/PublishModal";
@@ -58,12 +59,16 @@ interface GenerationItem {
 }
 
 /** Разделы сайдбара, у которых есть собственный рабочий экран. */
-type WorkspaceView = "create" | "social" | "calendar";
+type WorkspaceView = "create" | "stores" | "social" | "calendar";
 
 const WORKSPACE_HEADERS: Record<WorkspaceView, { title: string; subtitle: string }> = {
   create: {
     title: "Content Studio",
     subtitle: "Generate studio-quality media & publish in 1 click",
+  },
+  stores: {
+    title: "Products & Stores",
+    subtitle: "Connect Shopify and review catalog products created in FLONEX",
   },
   social: {
     title: "Social Auto-Publish",
@@ -74,6 +79,14 @@ const WORKSPACE_HEADERS: Record<WorkspaceView, { title: string; subtitle: string
     subtitle: "Plan social posts and Shopify products on a month or week grid",
   },
 };
+
+function isWorkspaceView(value: string | null): value is WorkspaceView {
+  return value === "create" || value === "stores" || value === "social" || value === "calendar";
+}
+
+function workspacePath(view: WorkspaceView): string {
+  return view === "create" ? "/" : `/?view=${view}`;
+}
 
 function isVideoMediaUrl(url: string): boolean {
   const clean = url.split("?")[0].toLowerCase();
@@ -133,6 +146,11 @@ const [isUploading, setIsUploading] = useState(false);
     setIsPublishOpen(true);
   };
 
+  const openWorkspace = (view: WorkspaceView) => {
+    setActiveView(view);
+    window.history.replaceState(null, "", workspacePath(view));
+  };
+
   /**
    * Из OAuth-диалога Meta пользователь возвращается редиректом на «/», а
    * результат подключения лежит в query. Читаем его после монтирования:
@@ -143,9 +161,14 @@ const [isUploading, setIsUploading] = useState(false);
     const params = new URLSearchParams(window.location.search);
     const social = params.get("social");
     const shopify = params.get("shopify");
+    const view = params.get("view");
+
+    if (isWorkspaceView(view)) {
+      setActiveView(view);
+    }
 
     if (shopify) {
-      setActiveView("calendar");
+      setActiveView("stores");
       const shop = params.get("shop");
       const message = params.get("message");
       setSocialNotice({
@@ -155,11 +178,16 @@ const [isUploading, setIsUploading] = useState(false);
             ? `Shopify подключён${shop ? `: ${shop}` : ""}`
             : message || "Не удалось подключить Shopify",
       });
-      window.history.replaceState(null, "", window.location.pathname);
+      window.history.replaceState(null, "", workspacePath("stores"));
       return;
     }
 
-    if (!social) return;
+    if (!social) {
+      if (isWorkspaceView(view) && view !== "create") {
+        window.history.replaceState(null, "", workspacePath(view));
+      }
+      return;
+    }
 
     if (params.get("view") === "social") {
       setActiveView("social");
@@ -644,12 +672,17 @@ const [isUploading, setIsUploading] = useState(false);
               active={activeView === "create"}
               layoutId="sidebarActive"
               stretch
-              onClick={() => setActiveView("create")}
+              onClick={() => openWorkspace("create")}
             >
               <Sparkles className="w-4 h-4" />
               Create Content
             </GlassTabButton>
-            <GlassTabButton active={false} layoutId="sidebarActive" stretch disabled>
+            <GlassTabButton
+              active={activeView === "stores"}
+              layoutId="sidebarActive"
+              stretch
+              onClick={() => openWorkspace("stores")}
+            >
               <Store className="w-4 h-4" />
               Products & Stores
             </GlassTabButton>
@@ -661,7 +694,7 @@ const [isUploading, setIsUploading] = useState(false);
               active={activeView === "calendar"}
               layoutId="sidebarActive"
               stretch
-              onClick={() => setActiveView("calendar")}
+              onClick={() => openWorkspace("calendar")}
             >
               <Calendar className="w-4 h-4" />
               Calendar
@@ -670,7 +703,7 @@ const [isUploading, setIsUploading] = useState(false);
               active={activeView === "social"}
               layoutId="sidebarActive"
               stretch
-              onClick={() => setActiveView("social")}
+              onClick={() => openWorkspace("social")}
             >
               <Share2 className="w-4 h-4" />
               Social Auto-Publish
@@ -775,11 +808,20 @@ const [isUploading, setIsUploading] = useState(false);
           </div>
         </header>
 
+        {activeView === "stores" && (
+          <ProductsStoresView
+            isSignedIn={Boolean(user)}
+            userId={user?.id ?? null}
+            notice={socialNotice}
+          />
+        )}
+
         {activeView === "calendar" && (
           <CalendarView
             userId={user?.id ?? null}
             productName={productName}
             notice={socialNotice && activeView === "calendar" ? socialNotice : null}
+            onOpenStores={() => openWorkspace("stores")}
           />
         )}
 

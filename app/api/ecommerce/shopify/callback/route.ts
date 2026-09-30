@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 function backToApp(request: NextRequest, params: Record<string, string>): NextResponse {
   const target = new URL("/", appOrigin(request.url));
-  target.searchParams.set("view", "calendar");
+  target.searchParams.set("view", "stores");
 
   for (const [key, value] of Object.entries(params)) {
     target.searchParams.set(key, value);

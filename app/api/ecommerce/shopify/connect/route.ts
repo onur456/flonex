@@ -10,7 +10,7 @@ import { getRequestAuth } from "@/lib/supabaseRequest";
 
 export const runtime = "nodejs";
 
-export async function POST(request: NextRequest) {
+async function startConnect(request: NextRequest, shopRaw: string | null) {
   const auth = await getRequestAuth(request);
 
   if (!auth) {
@@ -27,8 +27,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const body = (await request.json().catch(() => ({}))) as { shop?: unknown };
-  const shop = typeof body.shop === "string" ? normalizeShopDomain(body.shop) : null;
+  const shop = shopRaw ? normalizeShopDomain(shopRaw) : null;
 
   if (!shop) {
     return NextResponse.json(
@@ -45,4 +44,14 @@ export async function POST(request: NextRequest) {
     redirectUri,
     shop,
   });
+}
+
+export async function GET(request: NextRequest) {
+  return startConnect(request, request.nextUrl.searchParams.get("shop"));
+}
+
+export async function POST(request: NextRequest) {
+  const body = (await request.json().catch(() => ({}))) as { shop?: unknown };
+  const fromBody = typeof body.shop === "string" ? body.shop : null;
+  return startConnect(request, fromBody || request.nextUrl.searchParams.get("shop"));
 }

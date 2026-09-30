@@ -149,13 +149,20 @@ export async function listShopifyStores(
 export async function getShopifyCredentials(
   admin: SupabaseClient,
   userId: string,
-  shopDomain: string
+  shopDomain?: string | null
 ): Promise<{ shopDomain: string; accessToken: string } | null> {
-  const { data, error } = await admin
+  let query = admin
     .from("shopify_stores")
     .select("shop_domain, access_token")
-    .eq("user_id", userId)
-    .eq("shop_domain", shopDomain)
+    .eq("user_id", userId);
+
+  if (shopDomain) {
+    query = query.eq("shop_domain", shopDomain);
+  }
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
@@ -168,6 +175,35 @@ export async function getShopifyCredentials(
     shopDomain: String(data.shop_domain),
     accessToken: decryptShopifyToken(String(data.access_token)),
   };
+}
+
+export async function deleteShopifyStore(
+  admin: SupabaseClient,
+  userId: string,
+  shopDomain: string
+): Promise<void> {
+  const { error } = await admin
+    .from("shopify_stores")
+    .delete()
+    .eq("user_id", userId)
+    .eq("shop_domain", shopDomain);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export interface ShopifyCatalogProduct {
+  id: string;
+  title: string;
+  status: string;
+  handle: string;
+  description: string;
+  imageUrl: string | null;
+  price: string | null;
+  currency: string | null;
+  has3d: boolean;
+  shopDomain: string;
 }
 
 interface GraphqlError {
@@ -235,6 +271,73 @@ export interface PublishToShopifyInput {
 export interface PublishToShopifyResult {
   productId: string;
   title: string;
+}
+
+const PRODUCTS_QUERY = `
+  query Catalog($first: Int!) {
+    products(first: $first, sortKey: UPDATED_AT, reverse: true) {
+      edges {
+        node {
+          id
+          title
+          status
+          handle
+          description
+          featuredImage { url altText }
+          priceRangeV2 {
+            minVariantPrice { amount currencyCode }
+          }
+          media(first: 8) {
+            edges {
+              node { mediaContentType }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export async function listShopifyProducts(
+  shopDomain: string,
+  accessToken: string,
+  first = 24
+): Promise<ShopifyCatalogProduct[]> {
+  const data = await shopifyGraphql<{
+    products: {
+      edges: Array<{
+        node: {
+          id: string;
+          title: string;
+          status?: string | null;
+          handle?: string | null;
+          description?: string | null;
+          featuredImage?: { url?: string | null } | null;
+          priceRangeV2?: {
+            minVariantPrice?: { amount?: string | null; currencyCode?: string | null } | null;
+          } | null;
+          media?: {
+            edges?: Array<{ node?: { mediaContentType?: string | null } | null }>;
+          } | null;
+        };
+      }>;
+    };
+  }>(shopDomain, accessToken, PRODUCTS_QUERY, { first });
+
+  return data.products.edges.map(({ node }) => ({
+    id: node.id,
+    title: node.title,
+    status: node.status || "ACTIVE",
+    handle: node.handle || "",
+    description: node.description || "",
+    imageUrl: node.featuredImage?.url || null,
+    price: node.priceRangeV2?.minVariantPrice?.amount || null,
+    currency: node.priceRangeV2?.minVariantPrice?.currencyCode || null,
+    has3d: Boolean(
+      node.media?.edges?.some((edge) => edge.node?.mediaContentType === "MODEL_3D")
+    ),
+    shopDomain,
+  }));
 }
 
 const PRODUCT_CREATE = `

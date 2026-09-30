@@ -34,6 +34,7 @@ interface CalendarViewProps {
   userId: string | null;
   productName?: string;
   notice?: { kind: "success" | "error"; text: string } | null;
+  onOpenStores?: () => void;
 }
 
 const STATUS_STYLES: Record<ScheduledPostStatus, string> = {
@@ -75,7 +76,12 @@ function PostCard({ post }: { post: ScheduledPost }) {
   );
 }
 
-export function CalendarView({ userId, productName, notice = null }: CalendarViewProps) {
+export function CalendarView({
+  userId,
+  productName,
+  notice = null,
+  onOpenStores,
+}: CalendarViewProps) {
   const [range, setRange] = useState<CalendarRange>("month");
   const [cursor, setCursor] = useState(() => new Date());
   const [posts, setPosts] = useState<ScheduledPost[]>([]);
@@ -260,6 +266,7 @@ export function CalendarView({ userId, productName, notice = null }: CalendarVie
           productName={productName}
           onClose={() => setScheduleDay(null)}
           onCreated={(post) => setPosts((prev) => [...prev, post])}
+          onOpenStores={onOpenStores}
         />
       )}
     </div>

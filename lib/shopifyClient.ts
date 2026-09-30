@@ -1,5 +1,7 @@
 import { supabase } from "./supabase";
-import type { ShopifyStoreRow } from "./ecommerce/shopify";
+import type { ShopifyCatalogProduct, ShopifyStoreRow } from "./ecommerce/shopify";
+
+export type { ShopifyCatalogProduct, ShopifyStoreRow };
 
 export class ShopifyApiError extends Error {
   readonly status: number;
@@ -9,6 +11,10 @@ export class ShopifyApiError extends Error {
     this.name = "ShopifyApiError";
     this.status = status;
   }
+}
+
+export function shopifyStoreLabel(domain: string): string {
+  return domain.replace(/\.myshopify\.com$/i, "");
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -47,10 +53,23 @@ export function startShopifyOAuth(shop: string): Promise<{
   redirectUri: string;
   shop: string;
 }> {
-  return request("/api/ecommerce/shopify/connect", {
-    method: "POST",
-    body: JSON.stringify({ shop }),
+  return request(`/api/ecommerce/shopify/connect?shop=${encodeURIComponent(shop)}`);
+}
+
+export function disconnectShopifyStore(
+  shopDomain: string
+): Promise<{ success: boolean; shop: string }> {
+  return request(`/api/ecommerce/shopify/stores?shop=${encodeURIComponent(shopDomain)}`, {
+    method: "DELETE",
   });
+}
+
+export function fetchShopifyProducts(shopDomain?: string): Promise<{
+  products: ShopifyCatalogProduct[];
+  shopDomain: string | null;
+}> {
+  const query = shopDomain ? `?shop=${encodeURIComponent(shopDomain)}` : "";
+  return request(`/api/ecommerce/shopify/products${query}`);
 }
 
 export function publishShopifyProduct(input: {
