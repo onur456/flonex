@@ -67,8 +67,9 @@ const WORKSPACE_HEADERS: Record<WorkspaceView, { title: string; subtitle: string
     subtitle: "Generate studio-quality media & publish in 1 click",
   },
   stores: {
-    title: "Products & Stores",
-    subtitle: "Connect Shopify and review catalog products created in FLONEX",
+    title: "E-Commerce Stores",
+    subtitle:
+      "Connect your e-commerce platforms to automatically push AI generations directly to your store catalogs.",
   },
   social: {
     title: "Social Auto-Publish",
@@ -809,11 +810,9 @@ const [isUploading, setIsUploading] = useState(false);
         </header>
 
         {activeView === "stores" && (
-          <ProductsStoresView
-            isSignedIn={Boolean(user)}
-            userId={user?.id ?? null}
-            notice={socialNotice}
-          />
+          <div className="p-8 max-w-6xl mx-auto w-full">
+            <ProductsStoresView isSignedIn={Boolean(user)} notice={socialNotice} />
+          </div>
         )}
 
         {activeView === "calendar" && (
