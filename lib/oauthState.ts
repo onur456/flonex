@@ -23,9 +23,15 @@ interface StatePayload {
 }
 
 function signingSecret(): string {
-  const secret = metaClientSecret || process.env.TIKTOK_CLIENT_SECRET?.trim() || "";
+  const secret =
+    metaClientSecret ||
+    process.env.TIKTOK_CLIENT_SECRET?.trim() ||
+    process.env.SHOPIFY_CLIENT_SECRET?.trim() ||
+    "";
   if (!secret) {
-    throw new Error("Для подписи OAuth state нужен META_CLIENT_SECRET или TIKTOK_CLIENT_SECRET");
+    throw new Error(
+      "Для подписи OAuth state нужен META_CLIENT_SECRET, TIKTOK_CLIENT_SECRET или SHOPIFY_CLIENT_SECRET"
+    );
   }
 
   return secret;

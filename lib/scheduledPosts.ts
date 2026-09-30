@@ -1,4 +1,5 @@
-import type { SocialMediaType, SocialPlatform } from "./social";
+import type { SocialMediaType } from "./social";
+import type { PlannerPlatform } from "./planner";
 import { supabase } from "./supabase";
 import { formatSupabaseError, isSupabaseConfigured } from "./supabaseConfig";
 
@@ -8,11 +9,15 @@ export interface ScheduledPost {
   id: string;
   mediaUrl: string;
   mediaType: SocialMediaType;
-  platform: SocialPlatform;
+  platform: PlannerPlatform;
   accountLabel: string | null;
   caption: string;
   scheduledAt: string;
   status: ScheduledPostStatus;
+  productTitle: string | null;
+  productDescription: string | null;
+  productPrice: string | null;
+  model3dUrl: string | null;
   createdAt: string;
 }
 
@@ -40,11 +45,16 @@ function fromRow(row: Record<string, unknown>): ScheduledPost {
     id: String(row.id),
     mediaUrl: String(row.media_url),
     mediaType: row.media_type === "video" ? "video" : "image",
-    platform: row.platform as SocialPlatform,
+    platform: row.platform as PlannerPlatform,
     accountLabel: typeof row.account_label === "string" ? row.account_label : null,
     caption: typeof row.caption === "string" ? row.caption : "",
     scheduledAt: String(row.scheduled_at),
     status: (row.status as ScheduledPostStatus) || "scheduled",
+    productTitle: typeof row.product_title === "string" ? row.product_title : null,
+    productDescription:
+      typeof row.product_description === "string" ? row.product_description : null,
+    productPrice: typeof row.product_price === "string" ? row.product_price : null,
+    model3dUrl: typeof row.model_3d_url === "string" ? row.model_3d_url : null,
     createdAt: String(row.created_at),
   };
 }
@@ -74,11 +84,15 @@ export async function insertScheduledPost(input: {
   userId: string | null;
   mediaUrl: string;
   mediaType: SocialMediaType;
-  platform: SocialPlatform;
+  platform: PlannerPlatform;
   accountLabel?: string | null;
   caption: string;
   scheduledAt: string;
   status: ScheduledPostStatus;
+  productTitle?: string | null;
+  productDescription?: string | null;
+  productPrice?: string | null;
+  model3dUrl?: string | null;
 }): Promise<ScheduledPost> {
   const localPost: ScheduledPost = {
     id:
@@ -92,6 +106,10 @@ export async function insertScheduledPost(input: {
     caption: input.caption,
     scheduledAt: input.scheduledAt,
     status: input.status,
+    productTitle: input.productTitle ?? null,
+    productDescription: input.productDescription ?? null,
+    productPrice: input.productPrice ?? null,
+    model3dUrl: input.model3dUrl ?? null,
     createdAt: new Date().toISOString(),
   };
 
@@ -112,6 +130,10 @@ export async function insertScheduledPost(input: {
         caption: input.caption,
         scheduled_at: input.scheduledAt,
         status: input.status,
+        product_title: input.productTitle || null,
+        product_description: input.productDescription || null,
+        product_price: input.productPrice || null,
+        model_3d_url: input.model3dUrl || null,
       },
     ])
     .select("*")

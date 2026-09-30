@@ -8,7 +8,7 @@ import {
   Plus,
 } from "lucide-react";
 import { GlassTabButton, GLASS_TAB_GROUP } from "@/components/ui/GlassTabButton";
-import { PlatformIcon } from "@/components/social/PlatformIcon";
+import { PlannerPlatformIcon } from "./PlannerPlatformIcon";
 import {
   addMonths,
   addDays,
@@ -33,6 +33,7 @@ type CalendarRange = "month" | "week";
 interface CalendarViewProps {
   userId: string | null;
   productName?: string;
+  notice?: { kind: "success" | "error"; text: string } | null;
 }
 
 const STATUS_STYLES: Record<ScheduledPostStatus, string> = {
@@ -56,7 +57,7 @@ function PostCard({ post }: { post: ScheduledPost }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
             <span className="inline-flex items-center gap-1 text-[10px] text-slate-200 truncate">
-              <PlatformIcon platform={post.platform} className="w-3 h-3" />
+              <PlannerPlatformIcon platform={post.platform} className="w-3 h-3" />
               {post.accountLabel || post.platform}
             </span>
             <span className="text-[9px] font-medium text-violet-200 bg-violet-600/20 border border-violet-500/30 rounded px-1 py-px">
@@ -74,7 +75,7 @@ function PostCard({ post }: { post: ScheduledPost }) {
   );
 }
 
-export function CalendarView({ userId, productName }: CalendarViewProps) {
+export function CalendarView({ userId, productName, notice = null }: CalendarViewProps) {
   const [range, setRange] = useState<CalendarRange>("month");
   const [cursor, setCursor] = useState(() => new Date());
   const [posts, setPosts] = useState<ScheduledPost[]>([]);
@@ -121,6 +122,17 @@ export function CalendarView({ userId, productName }: CalendarViewProps) {
 
   return (
     <div className="p-8 max-w-6xl mx-auto w-full space-y-5">
+      {notice && (
+        <div
+          className={`rounded-xl border px-4 py-3 text-xs ${
+            notice.kind === "success"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+              : "border-rose-500/30 bg-rose-500/10 text-rose-200"
+          }`}
+        >
+          {notice.text}
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button

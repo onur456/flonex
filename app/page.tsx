@@ -71,7 +71,7 @@ const WORKSPACE_HEADERS: Record<WorkspaceView, { title: string; subtitle: string
   },
   calendar: {
     title: "Calendar & Content Planner",
-    subtitle: "Plan posts across Facebook, Instagram, and TikTok on a month or week grid",
+    subtitle: "Plan social posts and Shopify products on a month or week grid",
   },
 };
 
@@ -142,6 +142,22 @@ const [isUploading, setIsUploading] = useState(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const social = params.get("social");
+    const shopify = params.get("shopify");
+
+    if (shopify) {
+      setActiveView("calendar");
+      const shop = params.get("shop");
+      const message = params.get("message");
+      setSocialNotice({
+        kind: shopify === "connected" ? "success" : "error",
+        text:
+          shopify === "connected"
+            ? `Shopify подключён${shop ? `: ${shop}` : ""}`
+            : message || "Не удалось подключить Shopify",
+      });
+      window.history.replaceState(null, "", window.location.pathname);
+      return;
+    }
 
     if (!social) return;
 
@@ -760,7 +776,11 @@ const [isUploading, setIsUploading] = useState(false);
         </header>
 
         {activeView === "calendar" && (
-          <CalendarView userId={user?.id ?? null} productName={productName} />
+          <CalendarView
+            userId={user?.id ?? null}
+            productName={productName}
+            notice={socialNotice && activeView === "calendar" ? socialNotice : null}
+          />
         )}
 
         {/* SOCIAL AUTO-PUBLISH */}

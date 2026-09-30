@@ -78,3 +78,19 @@ export async function saveGeneratedModelRecord(input: {
 
   return data as SavedGeneratedModel;
 }
+
+export async function fetchGeneratedModels(limit = 12): Promise<SavedGeneratedModel[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("generated_models")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("generated_models fetch error:", formatSupabaseError(error));
+    return [];
+  }
+
+  return (data ?? []) as SavedGeneratedModel[];
+}

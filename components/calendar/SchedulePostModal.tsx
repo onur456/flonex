@@ -6,6 +6,7 @@ import {
   CalendarClock,
   Image as ImageIcon,
   Loader2,
+  ShoppingBag,
   Sparkles,
   Video,
   X,
@@ -20,7 +21,15 @@ import {
   defaultTimeForDay,
 } from "@/lib/calendar";
 import { insertScheduledPost, type ScheduledPost } from "@/lib/scheduledPosts";
+import { plannerPlatformLabel, type PlannerPlatform } from "@/lib/planner";
 import { enhanceCaption, fetchAccounts, publishAsset } from "@/lib/socialClient";
+import {
+  fetchShopifyStores,
+  publishShopifyProduct,
+  startShopifyOAuth,
+} from "@/lib/shopifyClient";
+import { fetchGeneratedModels, type SavedGeneratedModel } from "@/lib/save3dModel";
+import type { ShopifyStoreRow } from "@/lib/ecommerce/shopify";
 import {
   acceptsMediaType,
   findSocialPlatform,
@@ -30,7 +39,7 @@ import {
 } from "@/lib/social";
 import { PlatformTile } from "@/components/social/PlatformIcon";
 
-const PLANNER_PLATFORMS: SocialPlatform[] = ["facebook", "instagram", "tiktok"];
+const SOCIAL_PLANNER_PLATFORMS: SocialPlatform[] = ["facebook", "instagram", "tiktok"];
 
 interface SchedulePostModalProps {
   day: Date;
@@ -55,11 +64,20 @@ export function SchedulePostModal({
   onCreated,
 }: SchedulePostModalProps) {
   const [assets, setAssets] = useState<GenerationAsset[]>([]);
+  const [models, setModels] = useState<SavedGeneratedModel[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [stores, setStores] = useState<ShopifyStoreRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
-  const [platform, setPlatform] = useState<SocialPlatform | null>(null);
+  const [platform, setPlatform] = useState<PlannerPlatform | null>(null);
   const [caption, setCaption] = useState("");
+  const [productTitle, setProductTitle] = useState(productName ?? "");
+  const [productDescription, setProductDescription] = useState("");
+  const [productPrice, setProductPrice] = useState("");
+  const [model3dUrl, setModel3dUrl] = useState("");
+  const [shopDomain, setShopDomain] = useState("");
+  const [connectShop, setConnectShop] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
   const [schedule, setSchedule] = useState(() => defaultDateTime(day));
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -78,17 +96,24 @@ export function SchedulePostModal({
 
     void (async () => {
       try {
-        const [loadedAssets, accountPayload] = await Promise.all([
+        const [loadedAssets, loadedModels, accountPayload, storePayload] = await Promise.all([
           fetchGenerationAssets(24).catch(() => [] as GenerationAsset[]),
+          fetchGeneratedModels(12),
           userId
             ? fetchAccounts().catch(() => ({ accounts: [] as SocialAccount[] }))
             : Promise.resolve({ accounts: [] as SocialAccount[] }),
+          userId
+            ? fetchShopifyStores().catch(() => ({ stores: [] as ShopifyStoreRow[] }))
+            : Promise.resolve({ stores: [] as ShopifyStoreRow[] }),
         ]);
 
         if (cancelled) return;
         setAssets(loadedAssets);
+        setModels(loadedModels);
         setAccounts(accountPayload.accounts);
+        setStores(storePayload.stores);
         setSelectedUrl((current) => current ?? loadedAssets[0]?.url ?? null);
+        setShopDomain((current) => current || storePayload.stores[0]?.shopDomain || "");
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Не удалось загрузить данные");
@@ -105,10 +130,11 @@ export function SchedulePostModal({
 
   const selectedAsset = assets.find((asset) => asset.url === selectedUrl) ?? null;
   const mediaType: SocialMediaType = selectedAsset?.type ?? "image";
+  const shopifyConnected = stores.length > 0;
 
-  const connected = useMemo(
+  const socialTargets = useMemo(
     () =>
-      PLANNER_PLATFORMS.map((id) => {
+      SOCIAL_PLANNER_PLATFORMS.map((id) => {
         const account = accounts.find(
           (item) => item.platform === id && item.status === "connected"
         );
@@ -122,28 +148,38 @@ export function SchedulePostModal({
     [accounts, mediaType]
   );
 
-  const selectedTarget = connected.find((item) => item.id === platform);
-
   const handleEnhance = async () => {
     if (!platform) {
-      setError("Сначала выберите Facebook или Instagram");
+      setError("Сначала выберите площадку");
       return;
     }
 
     setIsEnhancing(true);
     setError(null);
     try {
-      setCaption(
-        await enhanceCaption({
-          caption,
-          productName,
-          platforms: [platform],
-        })
-      );
+      const platforms: SocialPlatform[] =
+        platform === "shopify" ? ["instagram"] : [platform];
+      const next = await enhanceCaption({ caption, productName, platforms });
+      setCaption(next);
+      if (platform === "shopify" && !productDescription.trim()) {
+        setProductDescription(next);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось сгенерировать подпись");
     } finally {
       setIsEnhancing(false);
+    }
+  };
+
+  const handleConnectShopify = async () => {
+    setIsConnecting(true);
+    setError(null);
+    try {
+      const started = await startShopifyOAuth(connectShop);
+      window.location.href = started.url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось начать подключение Shopify");
+      setIsConnecting(false);
     }
   };
 
@@ -152,20 +188,13 @@ export function SchedulePostModal({
       setError("Выберите фото или видео из генераций");
       return;
     }
-    if (!platform || !selectedTarget) {
-      setError("Выберите Facebook Page или Instagram");
-      return;
-    }
-    if (!selectedTarget.accepts) {
-      setError(`${findSocialPlatform(platform).title} не принимает этот тип медиа`);
+    if (!platform) {
+      setError("Выберите Facebook, Instagram, TikTok или Shopify");
       return;
     }
 
     const [year, month, date] = schedule.date.split("-").map(Number);
-    const when = combineLocalDateTime(
-      new Date(year, month - 1, date),
-      schedule.time
-    );
+    const when = combineLocalDateTime(new Date(year, month - 1, date), schedule.time);
 
     if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
       setError("Дата публикации должна быть в будущем");
@@ -176,8 +205,56 @@ export function SchedulePostModal({
     setError(null);
 
     try {
+      if (platform === "shopify") {
+        if (!shopDomain) {
+          throw new Error("Подключите Shopify store");
+        }
+        if (!productTitle.trim()) {
+          throw new Error("Укажите Product Title");
+        }
+
+        const imageUrls =
+          selectedAsset.type === "image" ? [selectedAsset.url] : [];
+
+        await publishShopifyProduct({
+          shopDomain,
+          title: productTitle.trim(),
+          description: productDescription.trim() || caption.trim(),
+          price: productPrice.trim() || "0.00",
+          imageUrls,
+          model3dUrl: model3dUrl.trim() || null,
+        });
+
+        const created = await insertScheduledPost({
+          userId,
+          mediaUrl: selectedAsset.url,
+          mediaType: selectedAsset.type,
+          platform: "shopify",
+          accountLabel: shopDomain,
+          caption: caption.trim() || productDescription.trim(),
+          scheduledAt: when.toISOString(),
+          status: "published",
+          productTitle: productTitle.trim(),
+          productDescription: productDescription.trim(),
+          productPrice: productPrice.trim(),
+          model3dUrl: model3dUrl.trim() || null,
+        });
+
+        onCreated(created);
+        onClose();
+        return;
+      }
+
+      const selectedTarget = socialTargets.find((item) => item.id === platform);
+      if (!selectedTarget) {
+        throw new Error("Выберите Facebook Page, Instagram или TikTok");
+      }
+      if (!selectedTarget.accepts) {
+        throw new Error(`${findSocialPlatform(platform).title} не принимает этот тип медиа`);
+      }
+
       const nativeSchedule = platform === "facebook" && Boolean(userId);
-      let status: ScheduledPost["status"] = nativeSchedule ? "scheduled" : "queued";
+      const status: ScheduledPost["status"] = nativeSchedule ? "scheduled" : "queued";
 
       if (nativeSchedule) {
         const publish = await publishAsset({
@@ -213,6 +290,10 @@ export function SchedulePostModal({
     }
   };
 
+  const shopifyActive = platform === "shopify";
+  const inputClass =
+    "w-full rounded-xl border border-violet-900/30 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-violet-500/50";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
@@ -234,7 +315,7 @@ export function SchedulePostModal({
               Schedule Post
             </h2>
             <p className="text-xs text-slate-400">
-              Выберите генерацию, аккаунт и время публикации
+              Соцсети или товар в Shopify — генерация, аккаунт и время
             </p>
           </div>
           <button
@@ -299,8 +380,8 @@ export function SchedulePostModal({
 
               <section className="space-y-2">
                 <h3 className="text-xs font-medium text-slate-400">Target account</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {connected.map((item) => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                  {socialTargets.map((item) => {
                     const meta = findSocialPlatform(item.id);
                     const active = platform === item.id;
                     const disabled = !item.connected || !item.accepts;
@@ -331,18 +412,132 @@ export function SchedulePostModal({
                       </button>
                     );
                   })}
+
+                  <button
+                    type="button"
+                    onClick={() => setPlatform("shopify")}
+                    className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
+                      shopifyActive
+                        ? "border-violet-500/40 bg-gradient-to-r from-violet-600/30 via-indigo-600/30 to-purple-600/30 text-white"
+                        : "border-violet-900/30 bg-slate-950/40 text-slate-300 hover:border-violet-500/20 hover:bg-white/[0.05]"
+                    }`}
+                  >
+                    <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-lime-400 flex items-center justify-center text-white shrink-0">
+                      <ShoppingBag className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">Shopify</p>
+                      <p className="text-[11px] text-slate-400 truncate">
+                        {shopifyConnected ? shopDomain || stores[0]?.shopDomain : "Connect a store"}
+                      </p>
+                    </div>
+                  </button>
                 </div>
                 {(platform === "instagram" || platform === "tiktok") && (
                   <p className="text-[11px] text-amber-300/90">
-                    {findSocialPlatform(platform).title} API не умеет отложенную публикацию —
+                    {plannerPlatformLabel(platform)} API не умеет отложенную публикацию —
                     карточка останется в календаре как queued.
                   </p>
                 )}
               </section>
 
+              {shopifyActive && (
+                <section className="space-y-3 rounded-2xl border border-violet-900/30 bg-slate-950/40 p-4">
+                  <h3 className="text-xs font-medium text-slate-400">Shopify product</h3>
+
+                  {shopifyConnected ? (
+                    <label className="space-y-1 block">
+                      <span className="text-[11px] text-slate-500">Store</span>
+                      <select
+                        value={shopDomain}
+                        onChange={(event) => setShopDomain(event.target.value)}
+                        className={inputClass}
+                      >
+                        {stores.map((store) => (
+                          <option key={store.id} value={store.shopDomain}>
+                            {store.shopDomain}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        value={connectShop}
+                        onChange={(event) => setConnectShop(event.target.value)}
+                        placeholder="your-store.myshopify.com"
+                        className={inputClass}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleConnectShopify}
+                        disabled={isConnecting || !connectShop.trim() || !userId}
+                        className="shrink-0 px-3 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+                      >
+                        {isConnecting ? "Connecting..." : "Connect Shopify"}
+                      </button>
+                    </div>
+                  )}
+
+                  <label className="space-y-1 block">
+                    <span className="text-[11px] text-slate-500">Product Title</span>
+                    <input
+                      value={productTitle}
+                      onChange={(event) => setProductTitle(event.target.value)}
+                      placeholder="Premium Cardio Syrup"
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="space-y-1 block">
+                    <span className="text-[11px] text-slate-500">Product Description</span>
+                    <textarea
+                      value={productDescription}
+                      onChange={(event) => setProductDescription(event.target.value)}
+                      rows={3}
+                      placeholder="Short storefront copy..."
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="space-y-1 block">
+                    <span className="text-[11px] text-slate-500">Product Price</span>
+                    <input
+                      value={productPrice}
+                      onChange={(event) => setProductPrice(event.target.value)}
+                      placeholder="29.00"
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="space-y-1 block">
+                    <span className="text-[11px] text-slate-500">3D Model Attachment (.glb)</span>
+                    {models.length > 0 && (
+                      <select
+                        value={models.some((model) => model.model_url === model3dUrl) ? model3dUrl : ""}
+                        onChange={(event) => setModel3dUrl(event.target.value)}
+                        className={`${inputClass} mb-2`}
+                      >
+                        <option value="">None / paste URL below</option>
+                        {models.map((model) => (
+                          <option key={model.id} value={model.model_url}>
+                            {model.product_name || model.model_url}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <input
+                      value={model3dUrl}
+                      onChange={(event) => setModel3dUrl(event.target.value)}
+                      placeholder="https://.../model.glb"
+                      className={inputClass}
+                    />
+                  </label>
+                </section>
+              )}
+
               <section className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-xs font-medium text-slate-400">Caption</h3>
+                  <h3 className="text-xs font-medium text-slate-400">
+                    {shopifyActive ? "Caption / extra copy" : "Caption"}
+                  </h3>
                   <button
                     type="button"
                     onClick={handleEnhance}
@@ -362,7 +557,7 @@ export function SchedulePostModal({
                   onChange={(event) => setCaption(event.target.value)}
                   rows={4}
                   placeholder="Write the post copy..."
-                  className="w-full rounded-xl border border-violet-900/30 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-violet-500/50"
+                  className={inputClass}
                 />
               </section>
 
@@ -377,7 +572,7 @@ export function SchedulePostModal({
                       onChange={(event) =>
                         setSchedule((prev) => ({ ...prev, date: event.target.value }))
                       }
-                      className="w-full rounded-xl border border-violet-900/30 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500/50"
+                      className={inputClass}
                     />
                   </label>
                   <label className="space-y-1">
@@ -388,13 +583,13 @@ export function SchedulePostModal({
                       onChange={(event) =>
                         setSchedule((prev) => ({ ...prev, time: event.target.value }))
                       }
-                      className="w-full rounded-xl border border-violet-900/30 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500/50"
+                      className={inputClass}
                     />
                   </label>
                 </div>
                 <p className="text-[11px] text-slate-500 inline-flex items-center gap-1">
                   <CalendarClock className="w-3 h-3" />
-                  Facebook native schedule: 10 minutes – 30 days. Instagram and TikTok stay queued in the planner.
+                  Shopify создаёт товар сразу. Facebook умеет native schedule; Instagram и TikTok — queued.
                 </p>
               </section>
             </>
@@ -420,11 +615,17 @@ export function SchedulePostModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSaving || isLoading || !selectedAsset || !platform}
+            disabled={
+              isSaving ||
+              isLoading ||
+              !selectedAsset ||
+              !platform ||
+              (shopifyActive && (!shopifyConnected || !productTitle.trim()))
+            }
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-violet-600 via-indigo-500 to-fuchsia-500 shadow-[0_0_25px_rgba(124,58,237,0.3)] disabled:opacity-50"
           >
             {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-            Schedule Post
+            {shopifyActive ? "Publish to Shopify" : "Schedule Post"}
           </button>
         </footer>
       </div>

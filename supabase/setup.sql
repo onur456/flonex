@@ -319,3 +319,40 @@ drop policy if exists "Users can delete own scheduled posts" on public.scheduled
 create policy "Users can delete own scheduled posts"
   on public.scheduled_posts for delete
   using (auth.uid() = user_id);
+
+alter table public.scheduled_posts
+  drop constraint if exists scheduled_posts_platform_check;
+
+alter table public.scheduled_posts
+  add constraint scheduled_posts_platform_check
+  check (platform in ('instagram', 'facebook', 'tiktok', 'shopify'));
+
+alter table public.scheduled_posts
+  add column if not exists product_title text,
+  add column if not exists product_description text,
+  add column if not exists product_price text,
+  add column if not exists model_3d_url text;
+
+-- Shopify stores. The access_token column holds ciphertext (AES-GCM), never
+-- the raw Admin API token. Client queries should select id/shop_domain only.
+create table if not exists public.shopify_stores (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  shop_domain text not null,
+  access_token text not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, shop_domain)
+);
+
+alter table public.shopify_stores enable row level security;
+
+drop policy if exists "Users can read own shopify stores" on public.shopify_stores;
+create policy "Users can read own shopify stores"
+  on public.shopify_stores for select
+  using (auth.uid() = user_id);
+
+-- Tokens must not be written by the browser. Inserts/updates go through
+-- service_role in the OAuth callback.
+revoke insert, update, delete on public.shopify_stores from anon, authenticated;
+grant select on public.shopify_stores to authenticated;
+
