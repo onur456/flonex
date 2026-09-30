@@ -222,6 +222,13 @@ export function ProductsStoresView({
                 isPending={isConnecting || isDisconnecting}
                 actionDisabled={connectedStore ? false : !shopInput.trim()}
                 onAction={connectedStore ? handleDisconnect : handleConnect}
+                onPublish={() => setIsScheduleOpen(true)}
+                publishDisabled={!connectedStore}
+                publishTitle={
+                  connectedStore
+                    ? "Publish product to Shopify"
+                    : "Connect store first to publish"
+                }
               />
 
               <StoreIntegrationCard
@@ -232,6 +239,8 @@ export function ProductsStoresView({
                 status="coming_soon"
                 actionLabel="Connect Amazon"
                 actionVariant="disabled"
+                publishDisabled
+                publishTitle="Connect Amazon first to publish"
               />
             </div>
           )}

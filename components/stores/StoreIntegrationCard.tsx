@@ -6,6 +6,7 @@ import {
   Clock,
   Link2,
   Loader2,
+  Send,
   Unlink,
   type LucideIcon,
 } from "lucide-react";
@@ -23,6 +24,9 @@ interface StoreIntegrationCardProps {
   onShopInputChange?: (value: string) => void;
   showShopInput?: boolean;
   shopInputDisabled?: boolean;
+  onPublish?: () => void;
+  publishDisabled?: boolean;
+  publishTitle?: string;
   actionLabel: string;
   onAction?: () => void;
   actionDisabled?: boolean;
@@ -41,6 +45,9 @@ export function StoreIntegrationCard({
   onShopInputChange,
   showShopInput = false,
   shopInputDisabled = false,
+  onPublish,
+  publishDisabled = false,
+  publishTitle,
   actionLabel,
   onAction,
   actionDisabled = false,
@@ -93,25 +100,43 @@ export function StoreIntegrationCard({
         />
       )}
 
-      <button
-        type="button"
-        onClick={onAction}
-        disabled={actionDisabled || isPending || actionVariant === "disabled"}
-        className={`mt-auto w-full py-2.5 rounded-xl text-xs font-semibold transition inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
-          actionVariant === "disconnect"
-            ? "bg-slate-800 hover:bg-rose-500/20 border border-slate-700 hover:border-rose-500/40 text-slate-200 hover:text-rose-200"
-            : "bg-indigo-600 hover:bg-indigo-500 text-white"
-        }`}
-      >
-        {isPending ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-        ) : actionVariant === "disconnect" ? (
-          <Unlink className="w-3.5 h-3.5" />
-        ) : (
-          <Link2 className="w-3.5 h-3.5" />
-        )}
-        {actionLabel}
-      </button>
+      <div className="mt-auto flex flex-col gap-4">
+        <button
+          type="button"
+          onClick={onPublish}
+          disabled={publishDisabled || isPending}
+          title={
+            publishTitle ??
+            (publishDisabled
+              ? "Connect store first to publish"
+              : `Publish product to ${title}`)
+          }
+          className="w-full py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:opacity-95 transition inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:opacity-40"
+        >
+          <Send className="w-3.5 h-3.5" />
+          Publish Product
+        </button>
+
+        <button
+          type="button"
+          onClick={onAction}
+          disabled={actionDisabled || isPending || actionVariant === "disabled"}
+          className={`w-full py-2.5 rounded-xl text-xs font-semibold transition inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
+            actionVariant === "disconnect"
+              ? "bg-slate-800 hover:bg-rose-500/20 border border-slate-700 hover:border-rose-500/40 text-slate-200 hover:text-rose-200"
+              : "bg-indigo-600 hover:bg-indigo-500 text-white"
+          }`}
+        >
+          {isPending ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : actionVariant === "disconnect" ? (
+            <Unlink className="w-3.5 h-3.5" />
+          ) : (
+            <Link2 className="w-3.5 h-3.5" />
+          )}
+          {actionLabel}
+        </button>
+      </div>
     </div>
   );
 }
