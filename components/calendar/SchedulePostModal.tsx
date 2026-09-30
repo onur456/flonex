@@ -46,6 +46,7 @@ interface SchedulePostModalProps {
   day: Date;
   userId: string | null;
   productName?: string;
+  initialPlatform?: PlannerPlatform | null;
   onClose: () => void;
   onCreated: (post: ScheduledPost) => void;
   onOpenStores?: () => void;
@@ -62,6 +63,7 @@ export function SchedulePostModal({
   day,
   userId,
   productName,
+  initialPlatform = null,
   onClose,
   onCreated,
   onOpenStores,
@@ -72,7 +74,7 @@ export function SchedulePostModal({
   const [stores, setStores] = useState<ShopifyStoreRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
-  const [platform, setPlatform] = useState<PlannerPlatform | null>(null);
+  const [platform, setPlatform] = useState<PlannerPlatform | null>(initialPlatform);
   const [caption, setCaption] = useState("");
   const [productTitle, setProductTitle] = useState(productName ?? "");
   const [productDescription, setProductDescription] = useState("");

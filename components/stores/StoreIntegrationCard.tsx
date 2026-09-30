@@ -9,7 +9,6 @@ import {
   Unlink,
   type LucideIcon,
 } from "lucide-react";
-import { ToggleSwitch } from "@/components/social/ToggleSwitch";
 
 export type StoreCardStatus = "connected" | "disconnected" | "coming_soon";
 
@@ -24,9 +23,6 @@ interface StoreIntegrationCardProps {
   onShopInputChange?: (value: string) => void;
   showShopInput?: boolean;
   shopInputDisabled?: boolean;
-  showAutoPublish?: boolean;
-  autoPublish?: boolean;
-  onAutoPublishChange?: (value: boolean) => void;
   actionLabel: string;
   onAction?: () => void;
   actionDisabled?: boolean;
@@ -45,9 +41,6 @@ export function StoreIntegrationCard({
   onShopInputChange,
   showShopInput = false,
   shopInputDisabled = false,
-  showAutoPublish = false,
-  autoPublish = false,
-  onAutoPublishChange,
   actionLabel,
   onAction,
   actionDisabled = false,
@@ -98,18 +91,6 @@ export function StoreIntegrationCard({
           placeholder="your-store.myshopify.com"
           className="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/50 disabled:opacity-60"
         />
-      )}
-
-      {showAutoPublish && (
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs text-slate-400">Auto-Publish Mode</span>
-          <ToggleSwitch
-            label="Auto-Publish Mode"
-            checked={autoPublish}
-            disabled={status !== "connected"}
-            onChange={(checked) => onAutoPublishChange?.(checked)}
-          />
-        </div>
       )}
 
       <button

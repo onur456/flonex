@@ -9,9 +9,11 @@ import {
   LogIn,
   Package,
   RefreshCw,
+  Send,
   ShoppingBag,
   Store,
 } from "lucide-react";
+import { SchedulePostModal } from "@/components/calendar/SchedulePostModal";
 import type { SocialNotice } from "@/components/social/SocialAccounts";
 import { StoreIntegrationCard } from "./StoreIntegrationCard";
 import {
@@ -23,40 +25,26 @@ import {
 } from "@/lib/shopifyClient";
 
 const STORE_COUNT = 2;
-const AUTO_PUBLISH_KEY = "flonex-shopify-auto-publish";
 
 interface ProductsStoresViewProps {
   isSignedIn: boolean;
+  userId: string | null;
+  productName?: string;
   notice?: SocialNotice | null;
-}
-
-function readAutoPublish(shopDomain: string | null): boolean {
-  if (typeof window === "undefined" || !shopDomain) return false;
-  try {
-    return window.localStorage.getItem(`${AUTO_PUBLISH_KEY}:${shopDomain}`) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeAutoPublish(shopDomain: string, enabled: boolean) {
-  try {
-    window.localStorage.setItem(`${AUTO_PUBLISH_KEY}:${shopDomain}`, enabled ? "1" : "0");
-  } catch {
-    /* ignore quota / private mode */
-  }
 }
 
 export function ProductsStoresView({
   isSignedIn,
+  userId,
+  productName,
   notice = null,
 }: ProductsStoresViewProps) {
   const [stores, setStores] = useState<ShopifyStoreRow[]>([]);
   const [shopInput, setShopInput] = useState("");
-  const [autoPublish, setAutoPublish] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const connectedStore = stores[0] ?? null;
@@ -72,9 +60,7 @@ export function ProductsStoresView({
     try {
       const { stores: loadedStores } = await fetchShopifyStores();
       setStores(loadedStores);
-      const shop = loadedStores[0]?.shopDomain ?? null;
-      setShopInput(shop ?? "");
-      setAutoPublish(readAutoPublish(shop));
+      setShopInput(loadedStores[0]?.shopDomain ?? "");
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить магазины");
@@ -108,18 +94,11 @@ export function ProductsStoresView({
       await disconnectShopifyStore(connectedStore.shopDomain);
       setStores([]);
       setShopInput("");
-      setAutoPublish(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось отключить магазин");
     } finally {
       setIsDisconnecting(false);
     }
-  };
-
-  const handleAutoPublish = (checked: boolean) => {
-    if (!connectedStore) return;
-    setAutoPublish(checked);
-    writeAutoPublish(connectedStore.shopDomain, checked);
   };
 
   return (
@@ -136,15 +115,32 @@ export function ProductsStoresView({
         </div>
 
         {isSignedIn && (
-          <button
-            type="button"
-            onClick={() => void load()}
-            disabled={isLoading}
-            className="px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 transition inline-flex items-center gap-1.5 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={isLoading}
+              className="px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 transition inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsScheduleOpen(true)}
+              disabled={connectedCount === 0}
+              title={
+                connectedCount === 0
+                  ? "Сначала подключите хотя бы один магазин"
+                  : "Опубликовать последнюю генерацию в Shopify"
+              }
+              className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white transition inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Publish Latest
+            </button>
+          </div>
         )}
       </div>
 
@@ -221,20 +217,15 @@ export function ProductsStoresView({
                 shopInput={shopInput}
                 onShopInputChange={setShopInput}
                 shopInputDisabled={Boolean(connectedStore) || isConnecting || isDisconnecting}
-                showAutoPublish
-                autoPublish={autoPublish}
-                onAutoPublishChange={handleAutoPublish}
                 actionLabel={connectedStore ? "Disconnect" : "Connect Shopify"}
                 actionVariant={connectedStore ? "disconnect" : "connect"}
                 isPending={isConnecting || isDisconnecting}
-                actionDisabled={
-                  connectedStore ? false : !shopInput.trim()
-                }
+                actionDisabled={connectedStore ? false : !shopInput.trim()}
                 onAction={connectedStore ? handleDisconnect : handleConnect}
               />
 
               <StoreIntegrationCard
-                title="Amazon SP-API"
+                title="Amazon"
                 subtitle="Listings, A+ Content & product feeds"
                 accent="from-amber-600 via-orange-500 to-yellow-400"
                 icon={Package}
@@ -255,6 +246,17 @@ export function ProductsStoresView({
             </p>
           </div>
         </>
+      )}
+
+      {isScheduleOpen && (
+        <SchedulePostModal
+          day={new Date()}
+          userId={userId}
+          productName={productName}
+          initialPlatform="shopify"
+          onClose={() => setIsScheduleOpen(false)}
+          onCreated={() => setIsScheduleOpen(false)}
+        />
       )}
     </div>
   );

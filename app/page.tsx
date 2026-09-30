@@ -811,7 +811,12 @@ const [isUploading, setIsUploading] = useState(false);
 
         {activeView === "stores" && (
           <div className="p-8 max-w-6xl mx-auto w-full">
-            <ProductsStoresView isSignedIn={Boolean(user)} notice={socialNotice} />
+            <ProductsStoresView
+              isSignedIn={Boolean(user)}
+              userId={user?.id ?? null}
+              productName={productName}
+              notice={socialNotice}
+            />
           </div>
         )}
 
