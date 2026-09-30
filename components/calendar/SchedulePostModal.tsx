@@ -8,7 +8,6 @@ import {
   Loader2,
   ShoppingBag,
   Sparkles,
-  Store,
   Video,
   X,
 } from "lucide-react";
@@ -66,7 +65,6 @@ export function SchedulePostModal({
   initialPlatform = null,
   onClose,
   onCreated,
-  onOpenStores,
 }: SchedulePostModalProps) {
   const [assets, setAssets] = useState<GenerationAsset[]>([]);
   const [models, setModels] = useState<SavedGeneratedModel[]>([]);
@@ -135,6 +133,13 @@ export function SchedulePostModal({
   const mediaType: SocialMediaType = selectedAsset?.type ?? "image";
   const shopifyConnected = stores.length > 0;
 
+  useEffect(() => {
+    if (isLoading) return;
+    if (platform === "shopify" && !shopifyConnected) {
+      setPlatform(null);
+    }
+  }, [isLoading, platform, shopifyConnected]);
+
   const socialTargets = useMemo(
     () =>
       SOCIAL_PLANNER_PLATFORMS.map((id) => {
@@ -172,15 +177,6 @@ export function SchedulePostModal({
     } finally {
       setIsEnhancing(false);
     }
-  };
-
-  const handleGoToStores = () => {
-    onClose();
-    if (onOpenStores) {
-      onOpenStores();
-      return;
-    }
-    window.location.assign("/dashboard/stores");
   };
 
   const handleSubmit = async () => {
@@ -415,12 +411,13 @@ export function SchedulePostModal({
 
                   <button
                     type="button"
+                    disabled={!shopifyConnected}
                     onClick={() => setPlatform("shopify")}
                     className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
                       shopifyActive
                         ? "border-violet-500/40 bg-gradient-to-r from-violet-600/30 via-indigo-600/30 to-purple-600/30 text-white"
                         : "border-violet-900/30 bg-slate-950/40 text-slate-300 hover:border-violet-500/20 hover:bg-white/[0.05]"
-                    } ${!shopifyConnected ? "opacity-40 hover:bg-slate-950/40" : ""}`}
+                    } ${!shopifyConnected ? "opacity-40 cursor-not-allowed hover:bg-slate-950/40" : ""}`}
                   >
                     <div
                       className={`h-8 w-8 rounded-lg flex items-center justify-center text-white shrink-0 ${
@@ -449,108 +446,90 @@ export function SchedulePostModal({
                 )}
               </section>
 
-              {shopifyActive && (
+              {shopifyActive && shopifyConnected && (
                 <section className="space-y-3 rounded-2xl border border-violet-900/30 bg-slate-950/40 p-4">
                   <h3 className="text-xs font-medium text-slate-400">Shopify product</h3>
 
-                  {shopifyConnected ? (
-                    <>
-                      <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-white truncate">
-                            {shopifyStoreLabel(shopDomain)}
-                          </p>
-                          <p className="text-[11px] text-emerald-200/80 truncate">{shopDomain}</p>
-                        </div>
-                        <span className="shrink-0 rounded-full border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200">
-                          Active
-                        </span>
-                      </div>
-
-                      {stores.length > 1 && (
-                        <label className="space-y-1 block">
-                          <span className="text-[11px] text-slate-500">Store</span>
-                          <select
-                            value={shopDomain}
-                            onChange={(event) => setShopDomain(event.target.value)}
-                            className={inputClass}
-                          >
-                            {stores.map((store) => (
-                              <option key={store.id} value={store.shopDomain}>
-                                {store.shopDomain}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-
-                      <label className="space-y-1 block">
-                        <span className="text-[11px] text-slate-500">Product Title</span>
-                        <input
-                          value={productTitle}
-                          onChange={(event) => setProductTitle(event.target.value)}
-                          placeholder="Premium Cardio Syrup"
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="space-y-1 block">
-                        <span className="text-[11px] text-slate-500">Product Description</span>
-                        <textarea
-                          value={productDescription}
-                          onChange={(event) => setProductDescription(event.target.value)}
-                          rows={3}
-                          placeholder="Short storefront copy..."
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="space-y-1 block">
-                        <span className="text-[11px] text-slate-500">Product Price</span>
-                        <input
-                          value={productPrice}
-                          onChange={(event) => setProductPrice(event.target.value)}
-                          placeholder="29.00"
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="space-y-1 block">
-                        <span className="text-[11px] text-slate-500">3D Model Attachment (.glb)</span>
-                        {models.length > 0 && (
-                          <select
-                            value={models.some((model) => model.model_url === model3dUrl) ? model3dUrl : ""}
-                            onChange={(event) => setModel3dUrl(event.target.value)}
-                            className={`${inputClass} mb-2`}
-                          >
-                            <option value="">None / paste URL below</option>
-                            {models.map((model) => (
-                              <option key={model.id} value={model.model_url}>
-                                {model.product_name || model.model_url}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                        <input
-                          value={model3dUrl}
-                          onChange={(event) => setModel3dUrl(event.target.value)}
-                          placeholder="https://.../model.glb"
-                          className={inputClass}
-                        />
-                      </label>
-                    </>
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-violet-900/40 bg-slate-950/50 p-4 text-center space-y-3">
-                      <p className="text-xs text-slate-400">
-                        Сначала подключите Shopify на странице Products & Stores.
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white truncate">
+                        {shopifyStoreLabel(shopDomain)}
                       </p>
-                      <button
-                        type="button"
-                        onClick={handleGoToStores}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-violet-600 via-indigo-500 to-fuchsia-500 shadow-[0_0_25px_rgba(124,58,237,0.3)]"
-                      >
-                        <Store className="w-3.5 h-3.5" />
-                        Connect Shopify Store
-                      </button>
+                      <p className="text-[11px] text-emerald-200/80 truncate">{shopDomain}</p>
                     </div>
+                    <span className="shrink-0 rounded-full border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200">
+                      Active
+                    </span>
+                  </div>
+
+                  {stores.length > 1 && (
+                    <label className="space-y-1 block">
+                      <span className="text-[11px] text-slate-500">Store</span>
+                      <select
+                        value={shopDomain}
+                        onChange={(event) => setShopDomain(event.target.value)}
+                        className={inputClass}
+                      >
+                        {stores.map((store) => (
+                          <option key={store.id} value={store.shopDomain}>
+                            {store.shopDomain}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   )}
+
+                  <label className="space-y-1 block">
+                    <span className="text-[11px] text-slate-500">Product Title</span>
+                    <input
+                      value={productTitle}
+                      onChange={(event) => setProductTitle(event.target.value)}
+                      placeholder="Premium Cardio Syrup"
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="space-y-1 block">
+                    <span className="text-[11px] text-slate-500">Product Description</span>
+                    <textarea
+                      value={productDescription}
+                      onChange={(event) => setProductDescription(event.target.value)}
+                      rows={3}
+                      placeholder="Short storefront copy..."
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="space-y-1 block">
+                    <span className="text-[11px] text-slate-500">Product Price</span>
+                    <input
+                      value={productPrice}
+                      onChange={(event) => setProductPrice(event.target.value)}
+                      placeholder="29.00"
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="space-y-1 block">
+                    <span className="text-[11px] text-slate-500">3D Model Attachment (.glb)</span>
+                    {models.length > 0 && (
+                      <select
+                        value={models.some((model) => model.model_url === model3dUrl) ? model3dUrl : ""}
+                        onChange={(event) => setModel3dUrl(event.target.value)}
+                        className={`${inputClass} mb-2`}
+                      >
+                        <option value="">None / paste URL below</option>
+                        {models.map((model) => (
+                          <option key={model.id} value={model.model_url}>
+                            {model.product_name || model.model_url}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <input
+                      value={model3dUrl}
+                      onChange={(event) => setModel3dUrl(event.target.value)}
+                      placeholder="https://.../model.glb"
+                      className={inputClass}
+                    />
+                  </label>
                 </section>
               )}
 
