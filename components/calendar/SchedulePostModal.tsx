@@ -420,9 +420,15 @@ export function SchedulePostModal({
                       shopifyActive
                         ? "border-violet-500/40 bg-gradient-to-r from-violet-600/30 via-indigo-600/30 to-purple-600/30 text-white"
                         : "border-violet-900/30 bg-slate-950/40 text-slate-300 hover:border-violet-500/20 hover:bg-white/[0.05]"
-                    }`}
+                    } ${!shopifyConnected ? "opacity-40 hover:bg-slate-950/40" : ""}`}
                   >
-                    <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-lime-400 flex items-center justify-center text-white shrink-0">
+                    <div
+                      className={`h-8 w-8 rounded-lg flex items-center justify-center text-white shrink-0 ${
+                        shopifyConnected
+                          ? "bg-gradient-to-tr from-emerald-500 to-lime-400"
+                          : "bg-slate-700 grayscale"
+                      }`}
+                    >
                       <ShoppingBag className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
